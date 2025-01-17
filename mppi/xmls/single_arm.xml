@@ -1,0 +1,63 @@
+<mujoco model="planar point mass">
+    <visual>
+        <quality shadowsize="2048" />
+        <headlight ambient="0.4 0.4 0.4" diffuse="0.8 0.8 0.8" specular="0.1 0.1 0.1" />
+    </visual>
+
+    <!-- Time step configuration: critical for simulation stability -->
+    <option impratio="10" iterations="1" ls_iterations="4" timestep="0.006">
+        <flag eulerdamp="disable"/>
+    </option>
+
+<!--    <default>-->
+<!--        <geom solimp="0.5 0.99 0.0001" solref="0.005 1"/>-->
+<!--    </default>-->
+
+    <asset>
+        <!-- Textures and Materials -->
+        <texture type="skybox" name="skybox" builtin="gradient" mark="random" rgb1="0.4 0.6 0.8" rgb2="0 0 0" markrgb="1 1 1" width="800" height="4800" />
+        <texture type="2d" name="grid" builtin="checker" mark="edge" rgb1="0.1 0.2 0.3" rgb2="0.2 0.3 0.4" markrgb="0.2 0.3 0.4" width="300" height="300" />
+        <material name="grid" texture="grid" texuniform="true" reflectance="0.2" />
+        <material name="self" rgba="0.7 0.5 0.3 1" />
+        <material name="self_default" rgba="0.7 0.5 0.3 1" />
+        <material name="self_highlight" rgba="0 0.5 0.3 1" />
+        <material name="effector" rgba="0.7 0.4 0.2 1" />
+        <material name="effector_default" rgba="0.7 0.4 0.2 1" />
+        <material name="effector_highlight" rgba="0 0.5 0.3 1" />
+        <material name="decoration" rgba="0.3 0.5 0.7 1" />
+        <material name="eye" rgba="0 0.2 1 1" />
+        <material name="target" rgba="0.6 0.3 0.3 1" />
+        <material name="target_default" rgba="0.6 0.3 0.3 1" />
+        <material name="target_highlight" rgba="0.6 0.3 0.3 0.4" />
+    </asset>
+
+    <worldbody>
+        <!-- Finger Body with Proximal, Distal, and Distal2 Geoms -->
+        <body name="finger" pos="0 0 0.035" quat="0.707107 0.707107 0 0">
+            <!-- Proximal Joint and Geom with increased damping -->
+            <joint name="proximal" range="0 6.28318530718" axis="0 -1 0" damping="0.3" limited="false" />
+            <geom name="proximal" type="capsule" material="self" size="0.03" fromto="0 0 0 0 0 -0.17"
+                  contype="1" conaffinity="2" />
+
+            <!-- Distal Body with Joint and Geom with increased damping -->
+            <body name="distal" pos="0 0 -0.23">
+                <joint name="distal" range="0 6.28318530718" axis="0 -1 0" damping="0.3" limited="false"/>
+                <geom name="distal" type="capsule" size="0.028" material="self" fromto="0 0 0 0 0 -0.16"
+                      contype="1" conaffinity="2"/>
+
+                <!-- Distal2 Body with Joint and Geom with increased damping -->
+                <body name="distal2" pos="0 0 -0.22">
+                    <joint name="distal2" range="0 6.28318530718" axis="0 -1 0" damping="0.3" limited="false"/>
+                    <geom name="distal2" type="capsule" size="0.028" material="self" fromto="0 0 0 0 0 -0.16"
+                          contype="1" conaffinity="2"/>
+                </body>
+            </body>
+        </body>
+    </worldbody>
+
+    <actuator>
+        <general name="proximal" joint="proximal" gear="0.25 0 0 0 0 0" />
+        <general name="distal" joint="distal" gear="0.325 0 0 0 0 0" />
+        <general name="distal2" joint="distal2" gear="0.325 0 0 0 0 0" />
+    </actuator>
+</mujoco>
