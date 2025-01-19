@@ -84,7 +84,7 @@ def make_loss(mx, qpos_init, set_control_fn, running_cost_fn, terminal_cost_fn):
     Create a loss function that only takes U as input.
     """
     def loss(U):
-        _, total_cost = simulate_trajectory_pmp(
+        _, total_cost = simulate_trajectory_pmp( #should this be pmp?
             mx, qpos_init,
             set_control_fn, running_cost_fn, terminal_cost_fn,
             U
@@ -117,8 +117,6 @@ class PMP:
 
         return U
 
-from jax import tree_util
-
 @dataclass
 class MPPI:
     loss: Callable[[jnp.ndarray], float]
@@ -128,37 +126,38 @@ class MPPI:
     running_cost: Callable[[jnp.ndarray], float]
     terminal_cost: Callable[[jnp.ndarray], float]
     set_control: Callable[[jnp.ndarray, jnp.ndarray], jnp.ndarray]
-    
+    mx: mjx.Model
 
-    def make_MPPI_solver(self, mx):
+    def solver(self, dx, U, key):
+        dx_internal = dx.replace(qpos=jnp.copy(dx.qpos), qvel=jnp.copy(dx.qvel))
+        # dx_internal = dx.replace(qpos=dx.qpos.copy(), qvel=dx.qvel.copy())
         
-        def solver(dx, U, key):
-            # dx_internal = dx.replace(qpos=jnp.copy(dx.qpos), qvel=jnp.copy(dx.qvel))
-            dx_internal = dx.replace()
-            # key, subkey = jax.random.split(key)
-            # noise = jax.random.normal(subkey, (U.shape[0], mx.nu))
-            # U_rollouts = U + noise
+        # key, subkey = jax.random.split(key)
+        # noise = jax.random.normal(subkey, (U.shape[0], mx.nu))
+        # U_rollouts = U + noise
 
-            split_keys = jax.random.split(key, N_rollouts)
-            noise = jax.vmap(lambda subkey: jax.random.normal(subkey, (U.shape[0], mx.nu)))(split_keys)
-            U_rollouts = jnp.expand_dims(U, axis=0) + noise
-    
-            simulate_trajectory_batch = jax.vmap(simulate_trajectory_mppi, in_axes=(None, None, None, None, None, 0))
-            x_batch, cost_batch = simulate_trajectory_batch(mx, dx_internal, set_control, running_cost, terminal_cost, U_rollouts)
+        split_keys = jax.random.split(key, N_rollouts)
+        noise = jax.vmap(lambda subkey: jax.random.normal(subkey, (U.shape[0], mx.nu)))(split_keys)
+        U_rollouts = jnp.expand_dims(U, axis=0) + noise
 
-            weights = jnp.exp(-cost_batch / self.lam) 
-            weights /= jnp.sum(weights)  # Normalize the weights to sum to 1
+        simulate_trajectory_batch = jax.vmap(simulate_trajectory_mppi, in_axes=(None, None, None, None, None, 0))
+        x_batch, cost_batch = simulate_trajectory_batch(mx, dx_internal, set_control, running_cost, terminal_cost, U_rollouts)
 
-            # weighted_controls = jnp.tensordot(weights, U_rollouts, axes=([0], [0]))
-            weighted_controls = jnp.einsum('k,kij->ij', weights, U_rollouts)
+        weights = jnp.exp(-cost_batch / self.lam) 
+        weights /= jnp.sum(weights)  # Normalize the weights to sum to 1
+        # print(f"weights {weights.shape}")
 
-            optimal_U = U + weighted_controls
-            next_U = U = jnp.roll(optimal_U, shift=-1, axis=0) 
-            print(f"Next Cost: {self.loss(optimal_U)}")
-            
-            return optimal_U[0], next_U
+        # weighted_controls = jnp.tensordot(weights, U_rollouts, axes=([0], [0]))
+        weighted_controls = jnp.einsum('k,kij->ij', weights, noise)
+        # print(f"weigthted_controls: {weighted_controls.shape}")
+
+        optimal_U = U + weighted_controls
+        next_U = U = jnp.roll(optimal_U, shift=-1, axis=0) 
+        print(f"Optimal Cost: {self.loss(optimal_U)}")
         
-        return solver
+        return optimal_U[0], next_U
+        
+        # return solver
 
 if __name__ == "__main__":
     path = "xmls/cartpole.xml"
@@ -166,6 +165,8 @@ if __name__ == "__main__":
     mx = mjx.put_model(model)
     dx = mjx.make_data(mx)
     qpos_init = jnp.array([0.0, 3.14])
+    dx = dx.replace(qpos=dx.qpos.at[:].set(qpos_init))
+
     Nsteps, nu, N_rollouts = 300, mx.nu, 1000
 
     def set_control(dx, u):
@@ -183,8 +184,9 @@ if __name__ == "__main__":
 
     task_completed = False
 
-    U = jnp.zeros((Nsteps, nu))
-    optimizer = MPPI(loss=loss_fn, grad_loss=grad_loss_fn, lam=1, U_init=U, running_cost=running_cost, terminal_cost=terminal_cost, set_control=set_control)
+    # U = jnp.zeros((Nsteps, nu))
+    U = jnp.ones((Nsteps, nu)) * 1.0
+    optimizer = MPPI(loss=loss_fn, grad_loss=grad_loss_fn, lam=1, U_init=U, running_cost=running_cost, terminal_cost=terminal_cost, set_control=set_control, mx=mx)
     key = jax.random.PRNGKey(0)
 
     import mujoco
@@ -193,20 +195,23 @@ if __name__ == "__main__":
     viewer = mujoco.viewer.launch_passive(model, data_cpu)
     import numpy as np
 
+    i = 1
     with viewer as v:
         while not task_completed:
+            print(f"iteration: {i}")
             key, subkey = jax.random.split(key)
-            make_mppi_solver = optimizer.make_MPPI_solver(mx)
-            u0, U = make_mppi_solver(dx, U, subkey)
+            # make_mppi_solver = optimizer.make_MPPI_solver(mx)
+            u0, U = optimizer.solver(dx, U, subkey)
             dx = set_control(dx, u0)
             dx = mjx.step(mx, dx)
-            # data_cpu.qpos[:] = dx.qpos.numpy()
-            # data_cpu.qvel[:] = dx.qvel.numpy()
-            data_cpu.qpos = dx.qpos.tolist()
-            data_cpu.qvel = dx.qvel.tolist()
-            # data_cpu.qpos = np.array(jax.device_get(dx.qpos))
-            # data_cpu.qvel = np.array(jax.device_get(dx.qvel))
+            print(f"Step {i}: qpos={dx.qpos}, qvel={dx.qvel}")
+            # print(f"After step: qpos={dx_next.qpos}, qvel={dx_next.qvel}")
+            # data_cpu.qpos = dx.qpos.numpy()
+            # data_cpu.qvel = dx.qvel.numpy()
+            # data_cpu.qpos = dx.qpos.tolist()
+            # data_cpu.qvel = dx.qvel.tolist()
+            data_cpu.qpos[:] = np.array(jax.device_get(dx.qpos))
+            data_cpu.qvel[:] = np.array(jax.device_get(dx.qvel))
             mujoco.mj_forward(model, data_cpu)
-            v.sync()
-
-            # time.sleep(0.1)
+            v.sync()  
+            i += 1
