@@ -1,6 +1,7 @@
 import equinox
 import jax
 import jax.numpy as jnp
+import mujoco
 from mujoco import mjx
 from jax import config
 from dataclasses import dataclass
@@ -178,7 +179,7 @@ if __name__ == "__main__":
         return 1e-3 * jnp.sum(u ** 2)
 
     def terminal_cost(dx):
-        return 1 * jnp.sum(dx.qpos )
+        return 1 * jnp.sum(dx.qpos ** 2)
 
     loss_fn = make_loss(mx, qpos_init, set_control, running_cost, terminal_cost)
     grad_loss_fn = equinox.filter_jit(jax.jacrev(loss_fn))
