@@ -129,7 +129,8 @@ class MPPI:
     mx: mjx.Model
 
     def solver(self, dx, U, key):
-        dx_internal = dx.replace(qpos=jnp.copy(dx.qpos), qvel=jnp.copy(dx.qvel))
+        # dx_internal = dx.replace(qpos=jnp.copy(dx.qpos), qvel=jnp.copy(dx.qvel))
+        dx_internal = jax.tree.map(lambda x: x, dx)
         # dx_internal = dx.replace(qpos=dx.qpos.copy(), qvel=dx.qvel.copy())
         
         # key, subkey = jax.random.split(key)
@@ -167,7 +168,7 @@ if __name__ == "__main__":
     qpos_init = jnp.array([0.0, 3.14])
     dx = dx.replace(qpos=dx.qpos.at[:].set(qpos_init))
 
-    Nsteps, nu, N_rollouts = 300, mx.nu, 1000
+    Nsteps, nu, N_rollouts = 300, mx.nu, 200
 
     def set_control(dx, u):
         return dx.replace(ctrl=dx.ctrl.at[:].set(u))
@@ -177,7 +178,7 @@ if __name__ == "__main__":
         return 1e-3 * jnp.sum(u ** 2)
 
     def terminal_cost(dx):
-        return 1 * jnp.sum(dx.qpos ** 2)
+        return 1 * jnp.sum(dx.qpos )
 
     loss_fn = make_loss(mx, qpos_init, set_control, running_cost, terminal_cost)
     grad_loss_fn = equinox.filter_jit(jax.jacrev(loss_fn))
@@ -186,7 +187,7 @@ if __name__ == "__main__":
 
     # U = jnp.zeros((Nsteps, nu))
     U = jnp.ones((Nsteps, nu)) * 1.0
-    optimizer = MPPI(loss=loss_fn, grad_loss=grad_loss_fn, lam=1, U_init=U, running_cost=running_cost, terminal_cost=terminal_cost, set_control=set_control, mx=mx)
+    optimizer = MPPI(loss=loss_fn, grad_loss=grad_loss_fn, lam=0.8, U_init=U, running_cost=running_cost, terminal_cost=terminal_cost, set_control=set_control, mx=mx)
     key = jax.random.PRNGKey(0)
 
     import mujoco
@@ -196,14 +197,21 @@ if __name__ == "__main__":
     import numpy as np
 
     i = 1
+    
+    @equinox.filter_jit
+    def jit_step(mx, dx):
+        return mjx.step(mx, dx)
+    
     with viewer as v:
         while not task_completed:
             print(f"iteration: {i}")
             key, subkey = jax.random.split(key)
             # make_mppi_solver = optimizer.make_MPPI_solver(mx)
+
             u0, U = optimizer.solver(dx, U, subkey)
             dx = set_control(dx, u0)
-            dx = mjx.step(mx, dx)
+
+            dx = jit_step(mx, dx)
             print(f"Step {i}: qpos={dx.qpos}, qvel={dx.qvel}")
             # print(f"After step: qpos={dx_next.qpos}, qvel={dx_next.qvel}")
             # data_cpu.qpos = dx.qpos.numpy()
