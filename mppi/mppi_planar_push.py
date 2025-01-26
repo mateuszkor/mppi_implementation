@@ -119,8 +119,10 @@ class MPPI:
 
         weights = jnp.exp(-cost_batch / self.lam) 
         weights /= jnp.sum(weights)
+        # print(f"weights {weights.shape}")
 
         weighted_controls = jnp.einsum('k,kij->ij', weights, noise)
+        # print(f"weigthted_controls: {weighted_controls.shape}")
 
         optimal_U = U + weighted_controls
         next_U = U = jnp.roll(optimal_U, shift=-1, axis=0) 
@@ -129,13 +131,13 @@ class MPPI:
         return optimal_U[0], next_U
 
 if __name__ == "__main__":
-    path = "xmls/finger_mjx.xml"
+    path = "xmls/planar_push_2d.xml"
     model = mujoco.MjModel.from_xml_path(path)
     mx = mjx.put_model(model)
     dx = mjx.make_data(mx)
-    qpos_init = jnp.array([0.0, 0.0, jnp.pi/2])
+    qpos_init = jnp.array([-2.0, 2.0])
     dx = dx.replace(qpos=dx.qpos.at[:].set(qpos_init))
-
+    print("got here")
     Nsteps, nu, N_rollouts = 100, mx.nu, 50
 
     def set_control(dx, u):
@@ -148,12 +150,14 @@ if __name__ == "__main__":
     def terminal_cost(dx):
         # angle_cost = jnp.sin(dx.qpos[2]) * jnp.pi
         angle_cost = jnp.mod(jnp.abs(dx.qpos[2]), jnp.pi)
-        return 1 * jnp.sum(angle_cost ** 2)
+        return 1 * jnp.sum(dx.qpos ** 2)
 
     loss_fn = make_loss(mx, qpos_init, set_control, running_cost, terminal_cost)
     grad_loss_fn = equinox.filter_jit(jax.jacrev(loss_fn))
 
     task_completed = False
+
+    # U = jnp.zeros((Nsteps, nu))
     U = jnp.ones((Nsteps, nu)) * 1.0
     
     optimizer = MPPI(loss=loss_fn, grad_loss=grad_loss_fn, lam=0.8, U_init=U, running_cost=running_cost, terminal_cost=terminal_cost, set_control=set_control, mx=mx)
