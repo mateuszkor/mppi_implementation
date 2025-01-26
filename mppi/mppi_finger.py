@@ -1,6 +1,7 @@
 import equinox
 import jax
 import jax.numpy as jnp
+import mujoco
 from mujoco import mjx
 from jax import config
 from dataclasses import dataclass
@@ -22,7 +23,7 @@ def upscale(x):
     return x
 
 @equinox.filter_jit
-def simulate_trajectory_pmp(mx, qpos_init, set_control_fn, running_cost_fn, terminal_cost_fn, U):
+def simulate_trajectory(mx, qpos_init, set_control_fn, running_cost_fn, terminal_cost_fn, U):
     """
     Simulate a trajectory given a control sequence U.
 
@@ -47,6 +48,7 @@ def simulate_trajectory_pmp(mx, qpos_init, set_control_fn, running_cost_fn, term
 
     dx0 = mjx.make_data(mx)
     dx0 = dx0.replace(qpos=dx0.qpos.at[:].set(qpos_init))
+    dx0 = jax.tree.map(upscale, dx0)
     dx_final, (states, costs) = jax.lax.scan(step_fn, dx0, U)
     total_cost = jnp.sum(costs) + terminal_cost_fn(dx_final)
     return states, total_cost
@@ -72,9 +74,11 @@ def simulate_trajectory_mppi(mx, dx, set_control_fn, running_cost_fn, terminal_c
         dx = set_control_fn(dx, u)
         dx = mjx.step(mx, dx)
         c = running_cost_fn(dx)
+
         state = jnp.concatenate([dx.qpos, dx.qvel])
         return dx, (state, c)
-
+    
+    dx = jax.tree.map(upscale, dx)
     dx_final, (states, costs) = jax.lax.scan(step_fn, dx, U)
     total_cost = jnp.sum(costs) + terminal_cost_fn(dx_final)
     return states, total_cost
@@ -84,7 +88,7 @@ def make_loss(mx, qpos_init, set_control_fn, running_cost_fn, terminal_cost_fn):
     Create a loss function that only takes U as input.
     """
     def loss(U):
-        _, total_cost = simulate_trajectory_pmp( #should this be pmp?
+        _, total_cost = simulate_trajectory( #should this be pmp?
             mx, qpos_init,
             set_control_fn, running_cost_fn, terminal_cost_fn,
             U
@@ -104,10 +108,11 @@ class MPPI:
     mx: mjx.Model
 
     def solver(self, dx, U, key):
-        dx_internal = dx.replace(qpos=jnp.copy(dx.qpos), qvel=jnp.copy(dx.qvel))
+        # dx_internal = dx.replace(qpos=jnp.copy(dx.qpos), qvel=jnp.copy(dx.qvel))
+        dx_internal = jax.tree.map(lambda x: x, dx)
         # dx_internal = dx.replace(qpos=dx.qpos.copy(), qvel=dx.qvel.copy())
         
-        # key, subkey = jax.random.split(key)
+        # key, subkey = jax.random.split(key)   
         # noise = jax.random.normal(subkey, (U.shape[0], mx.nu))
         # U_rollouts = U + noise
 
@@ -135,25 +140,26 @@ class MPPI:
         # return solver
 
 if __name__ == "__main__":
-    path = "xmls/doubleintegrator.xml"
+    path = "xmls/finger_mjx.xml"
     model = mujoco.MjModel.from_xml_path(path)
     mx = mjx.put_model(model)
     dx = mjx.make_data(mx)
-    print(f"dx: {dx.qpos}")
-    qpos_init = jnp.array([0.0])
+    qpos_init = jnp.array([0.0, 0.0, jnp.pi/2])
     dx = dx.replace(qpos=dx.qpos.at[:].set(qpos_init))
 
-    Nsteps, nu, N_rollouts = 300, mx.nu, 1000
+    Nsteps, nu, N_rollouts = 100, mx.nu, 50
 
     def set_control(dx, u):
-        return dx.replace(ctrl=dx.ctrl.at[:].set(u))
+        return dx.replace(ctrl=dx.ctrl.at[:].set(u))    
 
     def running_cost(dx):
         u = dx.ctrl
         return 1e-3 * jnp.sum(u ** 2)
-
+    
     def terminal_cost(dx):
-        return 1 * jnp.sum(dx.qpos ** 2)
+        # angle_cost = jnp.sin(dx.qpos[2]) * jnp.pi
+        angle_cost = jnp.mod(jnp.abs(dx.qpos[2]), jnp.pi)
+        return 1 * jnp.sum(angle_cost ** 2)
 
     loss_fn = make_loss(mx, qpos_init, set_control, running_cost, terminal_cost)
     grad_loss_fn = equinox.filter_jit(jax.jacrev(loss_fn))
@@ -162,7 +168,8 @@ if __name__ == "__main__":
 
     # U = jnp.zeros((Nsteps, nu))
     U = jnp.ones((Nsteps, nu)) * 1.0
-    optimizer = MPPI(loss=loss_fn, grad_loss=grad_loss_fn, lam=1, U_init=U, running_cost=running_cost, terminal_cost=terminal_cost, set_control=set_control, mx=mx)
+    
+    optimizer = MPPI(loss=loss_fn, grad_loss=grad_loss_fn, lam=0.8, U_init=U, running_cost=running_cost, terminal_cost=terminal_cost, set_control=set_control, mx=mx)
     key = jax.random.PRNGKey(0)
 
     import mujoco
@@ -172,14 +179,19 @@ if __name__ == "__main__":
     import numpy as np
 
     i = 1
+    @equinox.filter_jit
+    def jit_step(mx, dx):
+        return mjx.step(mx, dx)
+    
     with viewer as v:
         while not task_completed:
             print(f"iteration: {i}")
             key, subkey = jax.random.split(key)
-            # make_mppi_solver = optimizer.make_MPPI_solver(mx)
+
             u0, U = optimizer.solver(dx, U, subkey)
             dx = set_control(dx, u0)
-            dx = mjx.step(mx, dx)
+
+            dx = jit_step(mx, dx)
             print(f"Step {i}: qpos={dx.qpos}, qvel={dx.qvel}")
             # print(f"After step: qpos={dx_next.qpos}, qvel={dx_next.qvel}")
             # data_cpu.qpos = dx.qpos.numpy()
@@ -191,3 +203,6 @@ if __name__ == "__main__":
             mujoco.mj_forward(model, data_cpu)
             v.sync()  
             i += 1
+            # if jnp.mod(dx.qpos[1], 2*jnp.pi) < 0.1:
+            #     print(dx.qpos[0], dx.qpos[1])
+            #     task_completed = True

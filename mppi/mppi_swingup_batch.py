@@ -98,14 +98,12 @@ class MPPI:
     loss: Callable[[jnp.ndarray], float]
     grad_loss: Callable[[jnp.ndarray], jnp.ndarray]  # Gradient of the loss function with respect to controls
     lam: float  # Temperature parameter used for weighting the control rollouts
-    U_init: jnp.ndarray
     running_cost: Callable[[jnp.ndarray], float]
     terminal_cost: Callable[[jnp.ndarray], float]
     set_control: Callable[[jnp.ndarray, jnp.ndarray], jnp.ndarray]
     mx: mjx.Model
 
     def solver(self, dx, U, key):
-        # dx_internal = dx.replace(qpos=jnp.copy(dx.qpos), qvel=jnp.copy(dx.qvel))
         dx_internal = jax.tree.map(lambda x: x, dx)
         # dx_internal = dx.replace(qpos=dx.qpos.copy(), qvel=dx.qvel.copy())
         
@@ -124,7 +122,6 @@ class MPPI:
         weights /= jnp.sum(weights)  # Normalize the weights to sum to 1
         # print(f"weights {weights.shape}")
 
-        # weighted_controls = jnp.tensordot(weights, U_rollouts, axes=([0], [0]))
         weighted_controls = jnp.einsum('k,kij->ij', weights, noise)
         # print(f"weigthted_controls: {weighted_controls.shape}")
 
@@ -140,11 +137,14 @@ if __name__ == "__main__":
     path = "xmls/cartpole.xml"
     model = mujoco.MjModel.from_xml_path(path)
     mx = mjx.put_model(model)
+    Nsteps, nu, N_rollouts, batch_size = 100, mx.nu, 10, 10
+
     dx = mjx.make_data(mx)
     qpos_init = jnp.array([0.0, 3.14])
     dx = dx.replace(qpos=dx.qpos.at[:].set(qpos_init))
 
-    Nsteps, nu, N_rollouts = 100, mx.nu, 10
+    batch_dx = jax.tree.map(lambda x: jnp.stack([x] * batch_size), dx)
+    print(f"batch_dx: {batch_dx.qpos.shape}")
 
     def set_control(dx, u):
         return dx.replace(ctrl=dx.ctrl.at[:].set(u))
@@ -159,12 +159,12 @@ if __name__ == "__main__":
 
     loss_fn = make_loss(mx, qpos_init, set_control, running_cost, terminal_cost)
     grad_loss_fn = equinox.filter_jit(jax.jacrev(loss_fn))
-
     task_completed = False
 
     # U = jnp.zeros((Nsteps, nu))
     U = jnp.ones((Nsteps, nu)) * 1.0
-    optimizer = MPPI(loss=loss_fn, grad_loss=grad_loss_fn, lam=0.8, U_init=U, running_cost=running_cost, terminal_cost=terminal_cost, set_control=set_control, mx=mx)
+    U_batch = jnp.ones((batch_size, Nsteps, nu)) 
+    optimizer = MPPI(loss=loss_fn, grad_loss=grad_loss_fn, lam=0.8, running_cost=running_cost, terminal_cost=terminal_cost, set_control=set_control, mx=mx)
     key = jax.random.PRNGKey(0)
 
     import mujoco
@@ -174,31 +174,44 @@ if __name__ == "__main__":
     import numpy as np
 
     i = 1
-    
     @equinox.filter_jit
     def jit_step(mx, dx):
         return mjx.step(mx, dx)
     
+    @jax.vmap
+    def batch_set_control(dx, u):
+        return dx.replace(ctrl=dx.ctrl.at[:].set(u))
+    
     with viewer as v:
         while not task_completed:
             print(f"iteration: {i}")
-            key, subkey = jax.random.split(key)
+            # key, subkey = jax.random.split(key)
+            split_keys = jax.random.split(key, batch_size)
+
             # make_mppi_solver = optimizer.make_MPPI_solver(mx)
+            # u0, U = optimizer.solver(dx, U, subkey)
+            solver_batch = jax.vmap(optimizer.solver, in_axes=(0, 0, 0))
+            u0_batch, U_batch = solver_batch(batch_dx, U_batch, split_keys)
 
-            u0, U = optimizer.solver(dx, U, subkey)
-            dx = set_control(dx, u0)
+            # print(f"u0_batch: {u0_batch}")
+            batch_dx = batch_set_control(batch_dx, u0_batch)
+            # print(f"batch_dx: {batch_dx.qpos}")
+            batch_dx = jax.vmap(jit_step, in_axes=(None, 0))(mx, batch_dx)
 
-            dx = jit_step(mx, dx)
-            print(f"Step {i}: qpos={dx.qpos}, qvel={dx.qvel}")
+            print(f"Step {i}: qpos={batch_dx.qpos[0]}, qvel={batch_dx.qvel[0]}")
             # print(f"After step: qpos={dx_next.qpos}, qvel={dx_next.qvel}")
             # data_cpu.qpos = dx.qpos.tolist()
             # data_cpu.qvel = dx.qvel.tolist()
-            data_cpu.qpos[:] = np.array(jax.device_get(dx.qpos))
-            data_cpu.qvel[:] = np.array(jax.device_get(dx.qvel))
+            data_cpu.qpos[:] = np.array(jax.device_get(batch_dx.qpos[0]))
+            data_cpu.qvel[:] = np.array(jax.device_get(batch_dx.qvel[0]))
             mujoco.mj_forward(model, data_cpu)
             v.sync()  
             i += 1
-            
-            # if jnp.mod(dx.qpos[1], 2*jnp.pi) < 0.1:
-            #     print(dx.qpos[0], dx.qpos[1])
-            #     task_completed = True
+
+            for j in range(batch_size):
+                if jnp.mod(batch_dx.qpos[j][1], 2*jnp.pi) < 0.1:
+                    print(f"finito in the batch number: {j}")
+                    print(batch_dx.qpos[j][0], batch_dx.qpos[j][1])
+                    task_completed = True
+        
+        
