@@ -149,7 +149,7 @@ if __name__ == "__main__":
     qpos_init = jax.random.uniform(key, 35, minval=-0.1, maxval=0.1)
     dx = dx.replace(qpos=dx.qpos.at[:].set(qpos_init))
 
-    Nsteps, nu, N_rollouts = 100, mx.nu, 10
+    Nsteps, nu, N_rollouts = 200, mx.nu, 10
 
     def set_control(dx, u):
         return dx.replace(ctrl=dx.ctrl.at[:].set(u))
@@ -165,6 +165,9 @@ if __name__ == "__main__":
         ball_position = dx.qpos[24:27]
         ball_quat = dx.qpos[27:31]
 
+        # Use jax.debug.print instead of print
+        jax.debug.print("current pos: {x}", x=ball_position)
+        jax.debug.print("position cost: {y}", y=position_cost)
         # orientation_error = jnp.linalg.norm(ball_quat - goal_quat)
         # orientation_cost = 1e2 * orientation_error**2
 
@@ -201,7 +204,7 @@ if __name__ == "__main__":
             dx = set_control(dx, u0)
 
             dx = jit_step(mx, dx)
-            print(f"Step {i}: qpos={dx.qpos}, qvel={dx.qvel}")
+            # print(f"Step {i}: qpos={dx.qpos}, qvel={dx.qvel}")
             # print(f"After step: qpos={dx_next.qpos}, qvel={dx_next.qvel}")
             # data_cpu.qpos = dx.qpos.tolist()
             # data_cpu.qvel = dx.qvel.tolist()
