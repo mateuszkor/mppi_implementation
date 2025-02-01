@@ -87,7 +87,7 @@ def make_loss(mx, qpos_init, set_control_fn, running_cost_fn, terminal_cost_fn):
     Create a loss function that only takes U as input.
     """
     def loss(U):
-        _, total_cost = simulate_trajectory( #should this be pmp?
+        _, total_cost = simulate_trajectory(
             mx, qpos_init,
             set_control_fn, running_cost_fn, terminal_cost_fn,
             U
@@ -146,10 +146,10 @@ if __name__ == "__main__":
     key = jax.random.PRNGKey(0)
 
     qpos_init = jax.random.uniform(key, 35, minval=-0.1, maxval=0.1)
-    qpos_init = qpos_init.at[24:28].set(model.qpos0[24:28])
+    qpos_init = qpos_init.at[24:35].set(model.qpos0[24:35])
     dx = dx.replace(qpos=dx.qpos.at[:].set(qpos_init))
 
-    Nsteps, nu, N_rollouts = 100, mx.nu, 1
+    Nsteps, nu, N_rollouts = 50, mx.nu, 5
 
     def set_control(dx, u):
         return dx.replace(ctrl=dx.ctrl.at[:].set(u))
@@ -183,22 +183,23 @@ if __name__ == "__main__":
         r2 = jnp.linalg.norm(ball_position-goal_position)
         pos_cost = r1
         # Use jax.debug.print instead of print
-        jax.debug.print("current pos: {x}", x=ball_position)
-        jax.debug.print("position cost: {y}", y=pos_cost)
+        # jax.debug.print("cur pos: {x}", x=ball_position)
+        # jax.debug.print("pos cost: {y}", y=pos_cost)
 
         # orientation_error = jnp.linalg.norm(ball_quat - goal_quat)
         # orientation_cost = 1e2 * orientation_error**2
+        # jax.debug.print("cur ball quat: {x}", x=ball_quat)
+        quat_diff = quaterion_diff(ball_quat, goal_quat)
+        # jax.debug.print("quat_diff: {x}", x=quat_diff)
 
-        quat_diff1 = quaterion_diff(ball_quat, goal_quat)
-        jax.debug.print("quat_diff1: {x}", x=quat_diff1)
-        quat_diff2 = quaterion_diff(goal_quat, ball_quat)
-        jax.debug.print("quat_diff2: {x}", x=quat_diff2)
-
-        angle = 2 * jnp.arccos(jnp.abs(quat_diff1[0]))  # quat_diff1[0] is the scalar part (w)
+        angle = 2 * jnp.arccos(jnp.abs(quat_diff[0])) 
+        # jax.debug.print("angle: {x}", x=angle)
     
         # Quaternion cost (penalize the squared angle)
-        quat_cost = 1e2 * angle**2
+        quat_cost = 1 * (jnp.pi-angle)
 
+        # jax.debug.print("pos cost: {y}", y=pos_cost)
+        # jax.debug.print("quat_cost: {x}", x=quat_cost)
         return pos_cost + quat_cost
 
     loss_fn = make_loss(mx, qpos_init, set_control, running_cost, terminal_cost)
@@ -208,7 +209,7 @@ if __name__ == "__main__":
 
     U = jnp.zeros((Nsteps, nu))
     # U = jnp.ones((Nsteps, nu)) * 1.0
-    optimizer = MPPI(loss=loss_fn, grad_loss=grad_loss_fn, lam=0.8, U_init=U, running_cost=running_cost, terminal_cost=terminal_cost, set_control=set_control, mx=mx)
+    optimizer = MPPI(loss=loss_fn, grad_loss=grad_loss_fn, lam=1, U_init=U, running_cost=running_cost, terminal_cost=terminal_cost, set_control=set_control, mx=mx)
 
     import mujoco
     import mujoco.viewer
@@ -231,10 +232,13 @@ if __name__ == "__main__":
             u0, U = optimizer.solver(dx, U, subkey)
             dx = set_control(dx, u0)
             dx = jit_step(mx, dx)
-            print(f"Step {i}: qpos={dx.qpos}")
-            # print(f"After step: qpos={dx_next.qpos}, qvel={dx_next.qvel}")
-            # data_cpu.qpos = dx.qpos.tolist()
-            # data_cpu.qvel = dx.qvel.tolist()
+            # print(f"Step {i}:")
+            # print(f"Step {i}: qpos={dx.qpos}")
+            ball_pos = dx.qpos[24:27]
+            ball_quat = dx.qpos[27:31]
+            print(f"ball_pos {i}: qpos={ball_pos}")
+            print(f"ball_quat {i}: qpos={ball_quat}")
+
             data_cpu.qpos[:] = np.array(jax.device_get(dx.qpos))
             data_cpu.qvel[:] = np.array(jax.device_get(dx.qvel))
             mujoco.mj_forward(model, data_cpu)
