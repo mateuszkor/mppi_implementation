@@ -149,14 +149,14 @@ if __name__ == "__main__":
     qpos_init = qpos_init.at[24:35].set(model.qpos0[24:35])
     dx = dx.replace(qpos=dx.qpos.at[:].set(qpos_init))
 
-    Nsteps, nu, N_rollouts = 50, mx.nu, 100
+    Nsteps, nu, N_rollouts = 100, mx.nu, 2
 
     def set_control(dx, u):
         return dx.replace(ctrl=dx.ctrl.at[:].set(u))
 
     def running_cost(dx):
         u = dx.ctrl
-        return 1e-3 * jnp.sum(u ** 2)
+        return 1e-5 * jnp.sum(u ** 2)
     
     def quaterion_diff(q1,q2):
         q1_norm = q1 / jnp.linalg.norm(q1)
@@ -171,34 +171,25 @@ if __name__ == "__main__":
         ])
 
     def terminal_cost(dx):
+        # -------- ball pos -------------
         ball_position = dx.qpos[24:27]
+        # jax.debug.print("cur pos: {x}", x=ball_position)
         goal_position =jnp.array([0.3, 0.0, 0.065]) 
-        
+    
+        pos_cost = 10 * jnp.sum((ball_position - goal_position) ** 2)
+        jax.debug.print("pos cost: {y}", y=pos_cost)
+
+        # -------- ball quats -----------
         ball_quat = dx.qpos[27:31]
+        # jax.debug.print("cur ball quat: {x}", x=ball_quat)
         goal_quat = jnp.array([1.0,0.0,0.0,0.0])
 
-        # option 1
-        r1 = jnp.sum((ball_position - goal_position) ** 2)
-        # option 2
-        r2 = jnp.linalg.norm(ball_position-goal_position)
-        pos_cost = 20 * r1
-        # Use jax.debug.print instead of print
-        # jax.debug.print("cur pos: {x}", x=ball_position)
-        # jax.debug.print("pos cost: {y}", y=pos_cost)
-
-        # orientation_error = jnp.linalg.norm(ball_quat - goal_quat)
-        # orientation_cost = 1e2 * orientation_error**2
-        # jax.debug.print("cur ball quat: {x}", x=ball_quat)
         quat_diff = quaterion_diff(ball_quat, goal_quat)
         # jax.debug.print("quat_diff: {x}", x=quat_diff)
-
         angle = 2 * jnp.arccos(jnp.abs(quat_diff[0])) 
         # jax.debug.print("angle: {x}", x=angle)
-    
-        # Quaternion cost (penalize the squared angle)
         quat_cost = (angle) ** 2
 
-        jax.debug.print("pos cost: {y}", y=pos_cost)
         jax.debug.print("quat_cost: {x}", x=quat_cost)
         return pos_cost + quat_cost
 
@@ -232,12 +223,12 @@ if __name__ == "__main__":
             u0, U = optimizer.solver(dx, U, subkey)
             dx = set_control(dx, u0)
             dx = jit_step(mx, dx)
-            # print(f"Step {i}:")
-            # print(f"Step {i}: qpos={dx.qpos}")
+
+
             ball_pos = dx.qpos[24:27]
             ball_quat = dx.qpos[27:31]
-            print(f"ball_pos {i}: qpos={ball_pos}")
-            print(f"ball_quat {i}: qpos={ball_quat}")
+            print(f"ball_pos {i}: xyx={ball_pos}")
+            print(f"ball_quat {i}: quat={ball_quat}")
 
             data_cpu.qpos[:] = np.array(jax.device_get(dx.qpos))
             data_cpu.qvel[:] = np.array(jax.device_get(dx.qvel))
