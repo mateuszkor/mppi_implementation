@@ -149,7 +149,7 @@ if __name__ == "__main__":
     qpos_init = qpos_init.at[24:35].set(model.qpos0[24:35])
     dx = dx.replace(qpos=dx.qpos.at[:].set(qpos_init))
 
-    Nsteps, nu, N_rollouts = 50, mx.nu, 5
+    Nsteps, nu, N_rollouts = 50, mx.nu, 100
 
     def set_control(dx, u):
         return dx.replace(ctrl=dx.ctrl.at[:].set(u))
@@ -181,7 +181,7 @@ if __name__ == "__main__":
         r1 = jnp.sum((ball_position - goal_position) ** 2)
         # option 2
         r2 = jnp.linalg.norm(ball_position-goal_position)
-        pos_cost = r1
+        pos_cost = 20 * r1
         # Use jax.debug.print instead of print
         # jax.debug.print("cur pos: {x}", x=ball_position)
         # jax.debug.print("pos cost: {y}", y=pos_cost)
@@ -196,10 +196,10 @@ if __name__ == "__main__":
         # jax.debug.print("angle: {x}", x=angle)
     
         # Quaternion cost (penalize the squared angle)
-        quat_cost = 1 * (jnp.pi-angle)
+        quat_cost = (angle) ** 2
 
-        # jax.debug.print("pos cost: {y}", y=pos_cost)
-        # jax.debug.print("quat_cost: {x}", x=quat_cost)
+        jax.debug.print("pos cost: {y}", y=pos_cost)
+        jax.debug.print("quat_cost: {x}", x=quat_cost)
         return pos_cost + quat_cost
 
     loss_fn = make_loss(mx, qpos_init, set_control, running_cost, terminal_cost)
