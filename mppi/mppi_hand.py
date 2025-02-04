@@ -149,14 +149,14 @@ if __name__ == "__main__":
     qpos_init = qpos_init.at[24:35].set(model.qpos0[24:35])
     dx = dx.replace(qpos=dx.qpos.at[:].set(qpos_init))
 
-    Nsteps, nu, N_rollouts = 100, mx.nu, 2
+    Nsteps, nu, N_rollouts = 200, mx.nu, 400
 
     def set_control(dx, u):
         return dx.replace(ctrl=dx.ctrl.at[:].set(u))
 
     def running_cost(dx):
         u = dx.ctrl
-        return 1e-5 * jnp.sum(u ** 2)
+        return 1e-4 * jnp.sum(u ** 2)
     
     def quaterion_diff(q1,q2):
         q1_norm = q1 / jnp.linalg.norm(q1)
@@ -174,23 +174,23 @@ if __name__ == "__main__":
         # -------- ball pos -------------
         ball_position = dx.qpos[24:27]
         # jax.debug.print("cur pos: {x}", x=ball_position)
-        goal_position =jnp.array([0.3, 0.0, 0.065]) 
+        goal_position =jnp.array([0.45, 0.0, 0.15]) 
     
-        pos_cost = 10 * jnp.sum((ball_position - goal_position) ** 2)
-        jax.debug.print("pos cost: {y}", y=pos_cost)
+        pos_cost = 10. * jnp.sum((ball_position - goal_position) ** 2)
+        # jax.debug.print("pos cost: {y}", y=pos_cost)
 
         # -------- ball quats -----------
         ball_quat = dx.qpos[27:31]
         # jax.debug.print("cur ball quat: {x}", x=ball_quat)
-        goal_quat = jnp.array([1.0,0.0,0.0,0.0])
+        goal_quat = jnp.array([0.0,1.0,0.0,0.0])
 
         quat_diff = quaterion_diff(ball_quat, goal_quat)
         # jax.debug.print("quat_diff: {x}", x=quat_diff)
         angle = 2 * jnp.arccos(jnp.abs(quat_diff[0])) 
         # jax.debug.print("angle: {x}", x=angle)
-        quat_cost = (angle) ** 2
+        quat_cost = 5. * ((angle) ** 2) 
 
-        jax.debug.print("quat_cost: {x}", x=quat_cost)
+        # jax.debug.print("quat_cost: {x}", x=quat_cost)
         return pos_cost + quat_cost
 
     loss_fn = make_loss(mx, qpos_init, set_control, running_cost, terminal_cost)

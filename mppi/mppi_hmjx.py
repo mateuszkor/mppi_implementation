@@ -149,12 +149,12 @@ if __name__ == "__main__":
     qpos_init = qpos_init.at[24:35].set(model.qpos0[24:35])
     dx = dx.replace(qpos=dx.qpos.at[:].set(qpos_init))
 
-    Nsteps, nu, N_rollouts = 100, mx.nu, 10
+    Nsteps, nu, N_rollouts = 100, mx.nu, 200
 
     def set_control(dx, u):
         return dx.replace(ctrl=dx.ctrl.at[:].set(u))
 
-    def quaterion_diff(q1,q2):
+    def quaterion_diff(q1,q2):  
         q1_norm = q1 / jnp.linalg.norm(q1)
         q1_conj = jnp.array([q1_norm[0], -q1_norm[1], -q1_norm[2], -q1_norm[3]])
         s1, x1, y1, z1 = q1_conj
@@ -171,7 +171,7 @@ if __name__ == "__main__":
         return 1e-4 * jnp.sum(u ** 2)
     
         ball_position = dx.qpos[24:27]
-        goal_position =jnp.array([0.3, 0.0, 0.065]) 
+        goal_position = jnp.array([0.3, 0.0, 0.045]) 
         cpos = 0.1*jnp.sum((ball_position - goal_position)**2)
 
         ball_quat = dx.qpos[27:31]
@@ -192,29 +192,29 @@ if __name__ == "__main__":
     def terminal_cost(dx):
 
         ball_position = dx.qpos[24:27]
-        jax.debug.print("cur pos: {x}", x=ball_position)
+        # jax.debug.print("cur pos: {x}", x=ball_position)
         goal_position = jnp.array([0.34, 0.0, 0.0]) 
-        cpos = 50. * jnp.sum((ball_position - goal_position)**2)
-        jax.debug.print("cpos (position cost): {0}", cpos)
+        cpos = 25. * jnp.sum((ball_position - goal_position)**2)
+        # jax.debug.print("cpos (position cost): {0}", cpos)
 
         ball_quat = dx.qpos[27:31]
-        goal_quat = jnp.array([1.0, 0.0, 0.0, 0.0])
+        goal_quat = jnp.array([0.0, 1.0, 0.0, 0.0])
         cquat = 2. * jnp.sum(quaterion_diff(ball_quat, goal_quat)**2)
-        jax.debug.print("cquat (quaternion cost): {0}", cquat)
+        # jax.debug.print("cquat (quaternion cost): {0}", cquat)
 
         ball_velocity = dx.qvel[24:27]
         cvel = 0.25 * jnp.sum(ball_velocity**2)
-        jax.debug.print("cvel (velocity cost): {0}", cvel)
+        # jax.debug.print("cvel (velocity cost): {0}", cvel)
 
         angular_velocities = dx.qvel[27:30]
         cang_vel = 0.01 * jnp.sum(angular_velocities**2)
-        jax.debug.print("cang_vel (angular velocity cost): {0}", cang_vel)
+        # jax.debug.print("cang_vel (angular velocity cost): {0}", cang_vel)
 
         cjoint_pos = 0.02 * jnp.sum(dx.qpos[:24]**2)
-        jax.debug.print("cjoint_pos (joint position cost): {0}", cjoint_pos)
+        # jax.debug.print("cjoint_pos (joint position cost): {0}", cjoint_pos)
 
         cjoint_vel = 0.001 * jnp.sum(dx.qvel[:24]**2)
-        jax.debug.print("cjoint_vel (joint velocity cost): {0}", cjoint_vel)
+        # jax.debug.print("cjoint_vel (joint velocity cost): {0}", cjoint_vel)
 
         punishment = jax.lax.cond(
             dx.qpos[26] < -0.02,
@@ -222,10 +222,11 @@ if __name__ == "__main__":
             lambda _: 0.0,
             operand=None
         )
-        jax.debug.print("Punishment applied for ball out of hand: {0}", punishment)
+        
+        # jax.debug.print("Punishment applied for ball out of hand: {0}", punishment)
 
         total_cost = cpos + cquat + cvel + cang_vel + cjoint_pos + cjoint_vel + punishment
-        jax.debug.print("Total cost: {0}", total_cost)
+        # jax.debug.print("Total cost: {0}", total_cost)
 
         return total_cost
 
