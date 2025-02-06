@@ -51,6 +51,10 @@ def simulate_trajectory(mx, qpos_init, set_control_fn, running_cost_fn, terminal
     dx0 = jax.tree.map(upscale, dx0)
     dx_final, (states, costs) = jax.lax.scan(step_fn, dx0, U)
     total_cost = jnp.sum(costs) + terminal_cost_fn(dx_final)
+
+    jax.debug.print("costs: {x}", x=jnp.sum(costs))
+    jax.debug.print("terminal: {x}", x=terminal_cost_fn(dx_final))
+
     return states, total_cost
 
 @equinox.filter_jit
@@ -145,20 +149,40 @@ if __name__ == "__main__":
     dx = mjx.make_data(mx)
     key = jax.random.PRNGKey(0)
 
-    qpos_init = jax.random.uniform(key, 35, minval=-0.1, maxval=0.1)
-    print(len(model.qpos0))
-    # qpos_init = qpos_init.at[24:35].set(model.qpos0[24:35])
+    qpos_init = jax.random.uniform(key, 32, minval=-0.1, maxval=0.1)
+    qpos_init = jnp.array([
+        -0.21292259, -0.15179611, -0.15403237,  0.49449011,  0.68263494,  0.55026304,
+        -0.08796999,  0.25227709,  0.88539273,  0.69736412, -0.02815096,  0.82066547,
+        0.59070077,  0.91741982,  0.27842981,  0.03551317,  0.81599353,  0.65583756,
+        0.71857939, -0.15087653,  0.67113446,  0.03214713,  0.00824811,  0.8125244,
+        0.53514186,  0.84334721, -0.04544574,  0.0179821 ,  1., 0., 0., 0.
+    ])
+
+    qpos_init = qpos_init.at[24:32].set(model.qpos0[24:32])
 
     dx = dx.replace(qpos=dx.qpos.at[:].set(qpos_init))
+    
 
-    Nsteps, nu, N_rollouts = 100, mx.nu, 5
+    Nsteps, nu, N_rollouts = 100, mx.nu, 50
 
     def set_control(dx, u):
         return dx.replace(ctrl=dx.ctrl.at[:].set(u))
 
     def running_cost(dx):
         u = dx.ctrl
-        return 1e-4 * jnp.sum(u ** 2)
+        ctrl_cost = 0
+        # jax.debug.print("dx control: {x}", x=u)
+        ctrl_cost = 1e-4 * jnp.sum(u ** 2)
+
+        ball_quat = dx.qpos[24:28]
+        goal_quat = jnp.array([0.0,1.0,0.0,0.0])
+        quat_diff = quaterion_diff(ball_quat, goal_quat)
+        angle = 2 * jnp.arccos(jnp.abs(quat_diff[0])) 
+        quat_cost = 0.1 * (angle ** 2)
+
+        # jax.debug.print("ctrl_cost: {x}", x=ctrl_cost)
+        # jax.debug.print("quat_cost: {x}", x=quat_cost)
+        return ctrl_cost + quat_cost
     
     def quaterion_diff(q1,q2):
         q1_norm = q1 / jnp.linalg.norm(q1)
@@ -182,14 +206,14 @@ if __name__ == "__main__":
         # jax.debug.print("pos cost: {y}", y=pos_cost)
 
         # -------- ball quats -----------
-        # ball_quat = dx.qpos[27:31]
+        ball_quat = dx.qpos[24:28]
         # jax.debug.print("cur ball quat: {x}", x=ball_quat)
         goal_quat = jnp.array([0.0,1.0,0.0,0.0])
         quat_diff = quaterion_diff(ball_quat, goal_quat)
         # jax.debug.print("quat_diff: {x}", x=quat_diff)
         angle = 2 * jnp.arccos(jnp.abs(quat_diff[0])) 
         # jax.debug.print("angle: {x}", x=angle)
-        quat_cost = 5. * ((angle) ** 2) 
+        quat_cost = 10 * (angle ** 2)
 
         # jax.debug.print("quat_cost: {x}", x=quat_cost)
         return quat_cost
@@ -225,11 +249,11 @@ if __name__ == "__main__":
             dx = set_control(dx, u0)
             dx = jit_step(mx, dx)
 
-
-            ball_pos = dx.qpos[24:27]
-            ball_quat = dx.qpos[27:31]
-            print(f"ball_pos {i}: xyx={ball_pos}")
-            print(f"ball_quat {i}: quat={ball_quat}")
+            # ball_pos = dx.qpos[24:28]
+            ball_pos = dx.qpos
+            # ball_quat = dx.qpos[27:31]
+            print(f"ball_quat {i}: quat={ball_pos}")
+            # print(f"ball_quat {i}: quat={ball_quat}")
 
             data_cpu.qpos[:] = np.array(jax.device_get(dx.qpos))
             data_cpu.qvel[:] = np.array(jax.device_get(dx.qvel))
