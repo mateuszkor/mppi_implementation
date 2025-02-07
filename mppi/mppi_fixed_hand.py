@@ -7,6 +7,7 @@ from jax import config
 from dataclasses import dataclass
 from typing import Callable
 import time
+import contextlib
 
 from numpy.ma.core import inner
 
@@ -230,7 +231,9 @@ if __name__ == "__main__":
     import mujoco
     import mujoco.viewer
     data_cpu = mujoco.MjData(model)
-    viewer = mujoco.viewer.launch_passive(model, data_cpu)
+    # viewer = mujoco.viewer.launch_passive(model, data_cpu)
+    headless = True
+    viewer = contextlib.nullcontext() if headless else mujoco.viewer.launch_passive(model, data_cpu)
     import numpy as np
 
     i = 1
@@ -251,14 +254,14 @@ if __name__ == "__main__":
 
             # ball_pos = dx.qpos[24:28]
             ball_pos = dx.qpos
-            # ball_quat = dx.qpos[27:31]
+            # ball_quat = dx.qpos[27:31]    
             print(f"ball_quat {i}: quat={ball_pos}")
             # print(f"ball_quat {i}: quat={ball_quat}")
 
             data_cpu.qpos[:] = np.array(jax.device_get(dx.qpos))
             data_cpu.qvel[:] = np.array(jax.device_get(dx.qvel))
             mujoco.mj_forward(model, data_cpu)
-            v.sync()  
+            if not headless: v.sync()  
             i += 1
             
             # if jnp.mod(dx.qpos[1], 2*jnp.pi) < 0.1:
