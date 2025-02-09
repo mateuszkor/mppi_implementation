@@ -7,6 +7,7 @@ from jax import config
 from dataclasses import dataclass
 from typing import Callable
 import time
+import contextlib
 
 from numpy.ma.core import inner
 
@@ -105,33 +106,25 @@ class MPPI:
 
     def solver(self, dx, U, key):
         dx_internal = jax.tree.map(lambda x: x, dx)
-        # dx_internal = dx.replace(qpos=dx.qpos.copy(), qvel=dx.qvel.copy())
-        
-        # key, subkey = jax.random.split(key)
-        # noise = jax.random.normal(subkey, (U.shape[0], mx.nu))
-        # U_rollouts = U + noise
 
         split_keys = jax.random.split(key, N_rollouts)
         noise = jax.vmap(lambda subkey: jax.random.normal(subkey, (U.shape[0], mx.nu)))(split_keys)
         U_rollouts = jnp.expand_dims(U, axis=0) + noise
+        # jax.debug.print("U_rollouts for dx={}: {}", dx.qpos, U_rollouts)
 
         simulate_trajectory_batch = jax.vmap(simulate_trajectory_mppi, in_axes=(None, None, None, None, None, 0))
         x_batch, cost_batch = simulate_trajectory_batch(mx, dx_internal, set_control, running_cost, terminal_cost, U_rollouts)
 
         weights = jnp.exp(-cost_batch / self.lam) 
         weights /= jnp.sum(weights)  # Normalize the weights to sum to 1
-        # print(f"weights {weights.shape}")
 
         weighted_controls = jnp.einsum('k,kij->ij', weights, noise)
-        # print(f"weigthted_controls: {weighted_controls.shape}")
 
         optimal_U = U + weighted_controls
         next_U = U = jnp.roll(optimal_U, shift=-1, axis=0) 
         print(f"Optimal Cost: {self.loss(optimal_U)}")
-        
+
         return optimal_U[0], next_U
-        
-        # return solver
 
 if __name__ == "__main__":
     path = "xmls/cartpole.xml"
@@ -144,7 +137,6 @@ if __name__ == "__main__":
     dx = dx.replace(qpos=dx.qpos.at[:].set(qpos_init))
 
     batch_dx = jax.tree.map(lambda x: jnp.stack([x] * batch_size), dx)
-    print(f"batch_dx: {batch_dx.qpos.shape}")
 
     def set_control(dx, u):
         return dx.replace(ctrl=dx.ctrl.at[:].set(u))
@@ -161,8 +153,6 @@ if __name__ == "__main__":
     grad_loss_fn = equinox.filter_jit(jax.jacrev(loss_fn))
     task_completed = False
 
-    # U = jnp.zeros((Nsteps, nu))
-    U = jnp.ones((Nsteps, nu)) * 1.0
     U_batch = jnp.ones((batch_size, Nsteps, nu)) 
     optimizer = MPPI(loss=loss_fn, grad_loss=grad_loss_fn, lam=0.8, running_cost=running_cost, terminal_cost=terminal_cost, set_control=set_control, mx=mx)
     key = jax.random.PRNGKey(0)
@@ -170,7 +160,8 @@ if __name__ == "__main__":
     import mujoco
     import mujoco.viewer
     data_cpu = mujoco.MjData(model)
-    viewer = mujoco.viewer.launch_passive(model, data_cpu)
+    headless = True
+    viewer = contextlib.nullcontext() if headless else mujoco.viewer.launch_passive(model, data_cpu)
     import numpy as np
 
     i = 1
@@ -188,29 +179,23 @@ if __name__ == "__main__":
             # key, subkey = jax.random.split(key)
             split_keys = jax.random.split(key, batch_size)
 
-            # make_mppi_solver = optimizer.make_MPPI_solver(mx)
-            # u0, U = optimizer.solver(dx, U, subkey)
             solver_batch = jax.vmap(optimizer.solver, in_axes=(0, 0, 0))
             u0_batch, U_batch = solver_batch(batch_dx, U_batch, split_keys)
 
-            # print(f"u0_batch: {u0_batch}")
             batch_dx = batch_set_control(batch_dx, u0_batch)
-            # print(f"batch_dx: {batch_dx.qpos}")
             batch_dx = jax.vmap(jit_step, in_axes=(None, 0))(mx, batch_dx)
 
             print(f"Step {i}: qpos={batch_dx.qpos[0]}, qvel={batch_dx.qvel[0]}")
-            # print(f"After step: qpos={dx_next.qpos}, qvel={dx_next.qvel}")
-            # data_cpu.qpos = dx.qpos.tolist()
-            # data_cpu.qvel = dx.qvel.tolist()
+
             data_cpu.qpos[:] = np.array(jax.device_get(batch_dx.qpos[0]))
             data_cpu.qvel[:] = np.array(jax.device_get(batch_dx.qvel[0]))
             mujoco.mj_forward(model, data_cpu)
-            v.sync()  
+            if not headless: v.sync() 
             i += 1
 
             for j in range(batch_size):
                 if jnp.mod(batch_dx.qpos[j][1], 2*jnp.pi) < 0.1:
-                    print(f"finito in the batch number: {j}")
+                    print(f"Finished in the batch number: {j}")
                     print(batch_dx.qpos[j][0], batch_dx.qpos[j][1])
                     task_completed = True
         
