@@ -10,9 +10,6 @@ import time
 
 from numpy.ma.core import inner
 
-config.update('jax_default_matmul_precision', 'high')
-config.update("jax_enable_x64", True)
-
 def upscale(x):
     """Convert data to 64-bit precision."""
     if hasattr(x, 'dtype'):
@@ -48,7 +45,7 @@ def simulate_trajectory(mx, qpos_init, set_control_fn, running_cost_fn, terminal
 
     dx0 = mjx.make_data(mx)
     dx0 = dx0.replace(qpos=dx0.qpos.at[:].set(qpos_init))
-    dx0 = jax.tree.map(upscale, dx0)
+    
     dx_final, (states, costs) = jax.lax.scan(step_fn, dx0, U)
     total_cost = jnp.sum(costs) + terminal_cost_fn(dx_final)
     return states, total_cost
@@ -78,7 +75,6 @@ def simulate_trajectory_mppi(mx, dx, set_control_fn, running_cost_fn, terminal_c
         state = jnp.concatenate([dx.qpos, dx.qvel])
         return dx, (state, c)
     
-    dx = jax.tree.map(upscale, dx)
     dx_final, (states, costs) = jax.lax.scan(step_fn, dx, U)
     total_cost = jnp.sum(costs) + terminal_cost_fn(dx_final)
     return states, total_cost
