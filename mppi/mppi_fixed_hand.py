@@ -81,7 +81,9 @@ def simulate_trajectory_mppi(mx, dx, set_control_fn, running_cost_fn, terminal_c
 
     dx_final, (states, costs) = jax.lax.scan(step_fn, dx, U)
     total_cost = jnp.sum(costs) + terminal_cost_fn(dx_final, weights[2])
-    return states, total_cost
+    jax.debug.print("costs: {x}", x=jnp.sum(costs))
+    jax.debug.print("terminal: {x}", x=terminal_cost_fn(dx_final, weights[2]))
+    return None, total_cost
 
 def make_loss(mx, qpos_init, set_control_fn, running_cost_fn, terminal_cost_fn):
     """
@@ -125,9 +127,9 @@ class MPPI:
         split_keys = jax.random.split(key, N_rollouts)
         noise = jax.vmap(lambda subkey: jax.random.normal(subkey, (U.shape[0], mx.nu)))(split_keys)
         U_rollouts = jnp.expand_dims(U, axis=0) + noise
-
+        
         simulate_trajectory_batch = jax.vmap(simulate_trajectory_mppi, in_axes=(None, None, None, None, None, 0, None))
-        x_batch, cost_batch = simulate_trajectory_batch(mx, dx_internal, set_control, running_cost, terminal_cost, U_rollouts, self.ws)
+        _, cost_batch = simulate_trajectory_batch(mx, dx_internal, set_control, running_cost, terminal_cost, U_rollouts, self.ws)
 
         baseline = jnp.min(cost_batch)
         weights = jnp.exp(-(cost_batch - baseline) / self.lam) 
@@ -137,9 +139,12 @@ class MPPI:
         
         optimal_U = U + weighted_controls
 
-        # optimal_U = U
+        _, optimal_cost = simulate_trajectory_mppi(mx, dx_internal, set_control, running_cost, terminal_cost, optimal_U, self.ws)
+        print(f"Optimal Cost: {optimal_cost}")
+        print(f"Optimal Cost: {self.loss(optimal_U, self.ws)}")
+
         next_U = U = jnp.roll(optimal_U, shift=-1, axis=0) 
-        # print(f"Optimal Cost: {self.loss(optimal_U, self.ws)}")
+        
         
         return optimal_U[0], next_U
 
@@ -149,38 +154,44 @@ if __name__ == "__main__":
     mx = mjx.put_model(model)
     dx = mjx.make_data(mx)
     key = jax.random.PRNGKey(0)
+    key, subkey1, subkey2 = jax.random.split(key, 3) 
 
-    qpos_init = jax.random.uniform(key, 32, minval=-0.1, maxval=0.1)
-    # qpos_init = jnp.array([
-    #     -0.21292259, -0.15179611, -0.15403237,  0.49449011,  0.68263494,  0.55026304,
-    #     -0.08796999,  0.25227709,  0.88539273,  0.69736412, -0.02815096,  0.82066547,
-    #     0.59070077,  0.91741982,  0.27842981,  0.03551317,  0.81599353,  0.65583756,
-    #     0.71857939, -0.15087653,  0.67113446,  0.03214713,  0.00824811,  0.8125244,
-    #     1.0,  0.0, 0.0, 0.0,  1., 0., 0., 0.
-    # ])
+    qpos_init = jax.random.uniform(subkey1, 32, minval=-0.1, maxval=0.1)
+    qvel_init = jax.random.uniform(subkey2, 30, minval=-0.05, maxval=0.05)
+    qpos_init = jnp.array([
+        -0.21292259, -0.15179611, -0.15403237,  0.49449011,  0.68263494,  0.55026304,
+        -0.08796999,  0.25227709,  0.88539273,  0.69736412, -0.02815096,  0.82066547,
+        0.59070077,  0.91741982,  0.27842981,  0.03551317,  0.81599353,  0.65583756,
+        0.71857939, -0.15087653,  0.67113446,  0.03214713,  0.00824811,  0.8125244,
+        1.0,  0.0, 0.0, 0.0,  1., 0., 0., 0.
+    ])
+    print(mx.nq, mx.nv)
 
     qpos_init = qpos_init.at[24:32].set(model.qpos0[24:32])
+    # qvel_init = qvel_init.at[24:30].set(model.qvel0[24:30])
+    print(qpos_init)
     dx = dx.replace(qpos=dx.qpos.at[:].set(qpos_init))
-    print(dx.qpos)
-    Nsteps, nu, N_rollouts = 50, mx.nu, 1
+    dx = dx.replace(qvel=dx.qvel.at[:].set(qvel_init))
+
+    Nsteps, nu, N_rollouts = 150, mx.nu, 50
     goal_quat = jnp.array([0.0,1.0,0.0,0.0])
-    weights = jnp.array([1e-4, 0.4, 5.0])
+    weights = jnp.array([0, 1e-1, 10.0])
 
     def set_control(dx, u):
         return dx.replace(ctrl=dx.ctrl.at[:].set(u))
 
     def running_cost(dx, ctrl_weight, quat_weight):
-        # u = dx.ctrl
-        # ctrl_cost = ctrl_weight * jnp.sum(u ** 2)
-        # jax.debug.print("ctrl_cost: {}", ctrl_cost)
+        u = dx.ctrl
+        ctrl_cost = ctrl_weight * jnp.sum(u ** 2)
+        # jax.debug.print("ctrlbreak_cost: {}", ctrl_cost)
 
-        # ball_quat = dx.qpos[24:28]
-        # quat_diff = quaterion_diff(ball_quat, goal_quat)
-        # angle = 2 * jnp.arccos(jnp.abs(quat_diff[0])) 
-        # quat_cost = quat_weight * (angle ** 2)
+        ball_quat = dx.qpos[24:28]
+        quat_diff = quaterion_diff(ball_quat, goal_quat)
+        angle = 2 * jnp.arccos(jnp.abs(quat_diff[0])) 
+        quat_cost = quat_weight * (angle ** 2)
         # # jax.debug.print("quat_cost: {x}", x=quat_cost)
 
-        return 1.0
+        return ctrl_cost + quat_cost
 
     def terminal_cost(dx, quat_weight):
         # -------- ball pos -------------
@@ -192,29 +203,32 @@ if __name__ == "__main__":
         # jax.debug.print("pos cost: {y}", y=pos_cost)
 
         # -------- ball quats -----------
-        # ball_quat = dx.qpos[24:28]
-        # quat_diff = quaterion_diff(ball_quat, goal_quat)
-        # angle = 2 * jnp.arccos(jnp.abs(quat_diff[0])) 
-        # quat_cost = quat_weight * (angle ** 2)
+        ball_quat = dx.qpos[24:28]
+        quat_diff = quaterion_diff(ball_quat, goal_quat)
+        angle = 2 * jnp.arccos(jnp.abs(quat_diff[0])) 
+        quat_cost = quat_weight * (angle ** 2)
 
         # jax.debug.print("quat_cost: {x}", x=quat_cost)
-        return 1.0
+        return quat_cost
 
     loss_fn = make_loss(mx, qpos_init, set_control, running_cost, terminal_cost)
     grad_loss_fn = equinox.filter_jit(jax.jacrev(loss_fn))
 
     task_completed = False
 
-    U = jnp.ones((Nsteps, nu)) * 1.0
-    # U_batch = jnp.ones((batch_size, Nsteps, nu)) 
-    # running cost, running quat, terminal quat
+    U = jax.random.normal(key, (Nsteps, nu))  # Shape: (Nsteps, nu)
     optimizer = MPPI(loss=loss_fn, grad_loss=grad_loss_fn, lam=0.8, running_cost=running_cost, terminal_cost=terminal_cost, set_control=set_control, mx=mx, ws=weights)
 
     import mujoco
     import mujoco.viewer
-    # data_cpu = mujoco.MjData(model)
-    headless = True
-    viewer = contextlib.nullcontext() 
+
+    data_cpu = mujoco.MjData(model)
+    headless = 0
+    if not headless:
+        viewer = mujoco.viewer.launch_passive(model, data_cpu)
+    else:
+        viewer = contextlib.nullcontext() 
+    
     import numpy as np
     i = 1
     
@@ -228,18 +242,21 @@ if __name__ == "__main__":
             key, subkey = jax.random.split(key)
 
             u0, U = optimizer.solver(dx, U, subkey)
+ 
+            # overflow here
             dx = set_control(dx, u0)
-            dx = jit_step(mx, dx)
+            # print(f"Step {i}: qpos={dx.qpos}, qvel={dx.qvel}")
+            dx = jit_step(mx, dx) #overflow here
 
             ball_quat = dx.qpos[24:28]
             print(f"ball_quat {i}: quat={ball_quat}")
 
-            # data_cpu.qpos[:] = np.array(jax.device_get(dx.qpos))
-            # data_cpu.qvel[:] = np.array(jax.device_get(dx.qvel))
 
-
-            # mujoco.mj_forward(model, data_cpu)
+            
             if not headless: 
+                data_cpu.qpos[:] = np.array(jax.device_get(dx.qpos))
+                data_cpu.qvel[:] = np.array(jax.device_get(dx.qvel))
+                mujoco.mj_forward(model, data_cpu)
                 v.sync()  
             
             i += 1
