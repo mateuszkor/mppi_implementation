@@ -5,11 +5,13 @@ name = "pypi"
 
 [packages]
 equinox = "0.11.7"
-jax = {version = "0.4.33", extras = ["cuda12"]}
+jax = {version = "0.4.33"}
 mujoco = "3.2.5"
 mujoco-mjx = "*"
 matplotlib = "*"
 pyaml = "*"
+optax = "*"
+wandb = "*"
 
 [dev-packages]
 

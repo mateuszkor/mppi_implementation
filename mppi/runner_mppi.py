@@ -212,7 +212,7 @@ if __name__ == "__main__":
     import mujoco
     import mujoco.viewer
     data_cpu = mujoco.MjData(model)
-    viewer = mujoco.viewer.launch_passive(model, data_cpu)
+    # viewer = mujoco.viewer.launch_passive(model, data_cpu)
     import numpy as np
 
     i = 1
@@ -225,28 +225,28 @@ if __name__ == "__main__":
     def batch_set_control(dx, u):
         return dx.replace(ctrl=dx.ctrl.at[:].set(u))
     
-    with viewer as v:
-        while not task_completed:
-            print(f"iteration: {i}")
-            # key, subkey = jax.random.split(key)
-            split_keys = jax.random.split(key, batch_size)
+    # with viewer as v:
+    while not task_completed:
+        print(f"iteration: {i}")
+        # key, subkey = jax.random.split(key)
+        split_keys = jax.random.split(key, batch_size)
 
-            solver_batch = jax.vmap(optimizer.solver, in_axes=(0, 0, 0))
-            u0_batch, U_batch = solver_batch(batch_dx, U_batch, split_keys)
+        solver_batch = jax.vmap(optimizer.solver, in_axes=(0, 0, 0))
+        u0_batch, U_batch = solver_batch(batch_dx, U_batch, split_keys)
 
-            batch_dx = batch_set_control(batch_dx, u0_batch)
-            batch_dx = jax.vmap(jit_step, in_axes=(None, 0))(mx, batch_dx)
-            print(f"Step {i}: qpos={batch_dx.qpos[args.vis]}, qvel={batch_dx.qvel[args.vis]}")
+        batch_dx = batch_set_control(batch_dx, u0_batch)
+        batch_dx = jax.vmap(jit_step, in_axes=(None, 0))(mx, batch_dx)
+        print(f"Step {i}: qpos={batch_dx.qpos[args.vis]}, qvel={batch_dx.qvel[args.vis]}")
 
-            data_cpu.qpos[:] = np.array(jax.device_get(batch_dx.qpos[args.vis]))
-            data_cpu.qvel[:] = np.array(jax.device_get(batch_dx.qvel[args.vis]))
-            mujoco.mj_forward(model, data_cpu)
-            v.sync()  
-            i += 1
-            
-            if args.xml != "cartpole.xml": continue
-            for j in range(batch_size):
-                if jnp.mod(batch_dx.qpos[j][1], 2*jnp.pi) < 0.1:
-                    print(f"Finished first in the batch number: {j}")
-                    print(batch_dx.qpos[j][0], batch_dx.qpos[j][1])
-                    task_completed = True
+        data_cpu.qpos[:] = np.array(jax.device_get(batch_dx.qpos[args.vis]))
+        data_cpu.qvel[:] = np.array(jax.device_get(batch_dx.qvel[args.vis]))
+        mujoco.mj_forward(model, data_cpu)
+        # v.sync()  
+        i += 1
+        
+        if args.xml != "cartpole.xml": continue
+        for j in range(batch_size):
+            if jnp.mod(batch_dx.qpos[j][1], 2*jnp.pi) < 0.1:
+                print(f"Finished first in the batch number: {j}")
+                print(batch_dx.qpos[j][0], batch_dx.qpos[j][1])
+                task_completed = True
