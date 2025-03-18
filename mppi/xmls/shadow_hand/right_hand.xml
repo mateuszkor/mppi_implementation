@@ -157,6 +157,7 @@
                   <inertial mass="0.013" pos="0 0 0.0130769" quat="1 0 0 1"
                     diaginertia="1.28092e-06 1.12092e-06 5.3e-07"/>
                   <joint name="rh_FFJ1" class="middle_distal"/>
+                  <site name="first_tip" type="sphere" size="0.01" pos="0 0 0.025"/>
                   <geom class="plastic_visual" mesh="f_distal_pst"/>
                   <geom class="plastic_collision" type="mesh" mesh="f_distal_pst_214" contype="0" conaffinity="2"/>
                 </body>
@@ -182,6 +183,7 @@
                   <inertial mass="0.013" pos="0 0 0.0130769" quat="1 0 0 1"
                     diaginertia="1.28092e-06 1.12092e-06 5.3e-07"/>
                   <joint name="rh_MFJ1" class="middle_distal"/>
+                  <site name="middle_tip" type="sphere" size="0.01" pos="0 0 0.025"/>
                   <geom class="plastic_visual" mesh="f_distal_pst"/>
                   <geom class="plastic_collision" type="mesh" mesh="f_distal_pst_214" contype="0" conaffinity="2"/>
                 </body>
@@ -207,6 +209,7 @@
                   <inertial mass="0.013" pos="0 0 0.0130769" quat="1 0 0 1"
                     diaginertia="1.28092e-06 1.12092e-06 5.3e-07"/>
                   <joint name="rh_RFJ1" class="middle_distal"/>
+                  <site name="ring_tip" type="sphere" size="0.01" pos="0 0 0.025"/>
                   <geom class="plastic_visual" mesh="f_distal_pst"/>
                   <geom class="plastic_collision" type="mesh" mesh="f_distal_pst_214" contype="0" conaffinity="2"/>
                 </body>
@@ -237,6 +240,7 @@
                     <inertial mass="0.013" pos="0 0 0.0130769" quat="1 0 0 1"
                       diaginertia="1.28092e-06 1.12092e-06 5.3e-07"/>
                     <joint name="rh_LFJ1" class="middle_distal"/>
+                    <site name="little_tip" type="sphere" size="0.01" pos="0 0 0.025"/>
                     <geom class="plastic_visual" mesh="f_distal_pst"/>
                     <geom class="plastic_collision" type="mesh" mesh="f_distal_pst_214" contype="0" conaffinity="2"/>
                   </body>
@@ -267,7 +271,7 @@
                     <inertial mass="0.017" pos="0 0 0.0145588" quat="1 0 0 1"
                       diaginertia="2.37794e-06 2.27794e-06 1e-06"/>
                     <joint name="rh_THJ1" class="thdistal"/>
-                    <site name="thumb_tip" type="sphere" size="0.02" pos="0 0 0.025"/>
+                    <site name="thumb_tip" type="sphere" size="0.01" pos="0 0 0.025"/>
                     <geom class="plastic_visual" mesh="th_distal_pst"/>
                     <geom class="plastic_collision" type="mesh" mesh="th_distal_pst_190" contype="0" conaffinity="2"/>
                   </body>
