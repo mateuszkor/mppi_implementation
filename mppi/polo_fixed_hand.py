@@ -20,6 +20,8 @@ from numpy.ma.core import inner
 # config.update('jax_default_matmul_precision', 'high')
 # config.update("jax_enable_x64", True)
 
+# wandb.init(project="polo_mppi", name="hand_experiment")
+
 def upscale(x):
     """Convert data to 64-bit precision."""
     if hasattr(x, 'dtype'):
@@ -199,9 +201,10 @@ class POLO:
         simulate_trajectory_batch = jax.vmap(simulate_trajectory_mppi_gamma, in_axes=(None, None, None, None, None, None, 0))
         x_batch, cost_batch = simulate_trajectory_batch(mx, dx_internal, set_control, running_cost, terminal_cost, value_net, U_rollouts)
 
-        weights = jnp.exp(-cost_batch / self.lam) 
+        baseline = jnp.min(cost_batch)
+        weights = jnp.exp(-(cost_batch - baseline) / self.lam)
         weights /= jnp.sum(weights)  # Normalize the weights to sum to 1
-
+        
         weighted_controls = jnp.einsum('k,kij->ij', weights, noise)
 
         optimal_U = U + weighted_controls
@@ -233,9 +236,9 @@ class POLO:
         simulate_trajectory_batch = jax.vmap(simulate_trajectory_mppi_gamma, in_axes=(None, None, None, None, None, None, 0))
         x_batch, cost_batch = simulate_trajectory_batch(mx, dx_internal, set_control, running_cost, terminal_cost, value_net, U_rollouts)
 
-        weights = jnp.exp(-cost_batch / self.lam) 
+        baseline = jnp.min(cost_batch)
+        weights = jnp.exp(-(cost_batch - baseline) / self.lam)
         weights /= jnp.sum(weights)  # Normalize the weights to sum to 1
-        # print(f"weights {weights.shape}")
 
         weighted_controls = jnp.einsum('k,kij->ij', weights, noise)
         optimal_U = U + weighted_controls
@@ -262,7 +265,6 @@ if __name__ == "__main__":
     model = mujoco.MjModel.from_xml_path(path)
     mx = mjx.put_model(model)
     dx = mjx.make_data(mx)
-    # dx = jax.tree.map(upscale, dx)
     key = jax.random.PRNGKey(0)
 
     qpos_init = jax.random.uniform(key, 32, minval=-0.1, maxval=0.1)
@@ -356,12 +358,11 @@ if __name__ == "__main__":
 
     with viewer as v:
         while not task_completed:
-
             key, subkey = jax.random.split(key)
             u0, U = polo.mppi_solver(dx, U, subkey, i)
             dx = set_control(dx, u0)
             dx = jit_step(mx, dx)
-
+        
             ball_quat = dx.qpos[24:28]
             print(f"ball_quat {i}: quat={ball_quat}")
 

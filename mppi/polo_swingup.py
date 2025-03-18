@@ -17,7 +17,7 @@ from nn.base_nn import Network
 config.update('jax_default_matmul_precision', 'high')
 config.update("jax_enable_x64", True)
 
-wandb.init(project="polo_mppi", name="cartpole_experiment")
+# wandb.init(project="polo_mppi", name="cartpole_experiment")
 
 def upscale(x):
     """Convert data to 64-bit precision."""
@@ -37,9 +37,7 @@ def simulate_trajectory(mx, qpos_init, set_control_fn, running_cost_fn, terminal
         mx: The MuJoCo model handle (static)
         qpos_init: initial positions (array)
         set_control_fn: fn(dx, u) -> dx to apply controls
-        running_cost_fn: fn(dx, u) -> cost (float)
-        terminal_cost_fn: fn(dx) -> cost (float)
-        U: (N, nu) array of controls.
+        running_cost_fn: fn(dx, u) -> cost (float)random_U
 
     Returns:
         states: (N, nq+nv) array of states
@@ -343,7 +341,7 @@ if __name__ == "__main__":
                     
                     value_loss = polo.update_value_function(states, targets)
                     print(f'Value function loss: {value_loss}')
-                    wandb.log({"Value Loss": float(value_loss), "Step": i})
+                    # wandb.log({"Value Loss": float(value_loss), "Step": i})
 
             # if jnp.mod(dx.qpos[1], 2*jnp.pi) < 0.1:
             #     print(dx.qpos[0], dx.qpos[1])

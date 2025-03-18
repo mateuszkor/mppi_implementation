@@ -105,13 +105,7 @@ class MPPI:
     mx: mjx.Model
 
     def solver(self, dx, U, key):
-        # dx_internal = dx.replace(qpos=jnp.copy(dx.qpos), qvel=jnp.copy(dx.qvel))
         dx_internal = jax.tree.map(lambda x: x, dx)
-        # dx_internal = dx.replace(qpos=dx.qpos.copy(), qvel=dx.qvel.copy())
-        
-        # key, subkey = jax.random.split(key)
-        # noise = jax.random.normal(subkey, (U.shape[0], mx.nu))
-        # U_rollouts = U + noise
 
         split_keys = jax.random.split(key, N_rollouts)
         noise = jax.vmap(lambda subkey: jax.random.normal(subkey, (U.shape[0], mx.nu)))(split_keys)
@@ -119,22 +113,17 @@ class MPPI:
 
         simulate_trajectory_batch = jax.vmap(simulate_trajectory_mppi, in_axes=(None, None, None, None, None, 0))
         x_batch, cost_batch = simulate_trajectory_batch(mx, dx_internal, set_control, running_cost, terminal_cost, U_rollouts)
-
+    
         weights = jnp.exp(-cost_batch / self.lam) 
         weights /= jnp.sum(weights)  # Normalize the weights to sum to 1
-        # print(f"weights {weights.shape}")
 
-        # weighted_controls = jnp.tensordot(weights, U_rollouts, axes=([0], [0]))
         weighted_controls = jnp.einsum('k,kij->ij', weights, noise)
-        # print(f"weigthted_controls: {weighted_controls.shape}")
 
         optimal_U = U + weighted_controls
         next_U = U = jnp.roll(optimal_U, shift=-1, axis=0) 
         print(f"Optimal Cost: {self.loss(optimal_U)}")
         
         return optimal_U[0], next_U
-        
-        # return solver
 
 if __name__ == "__main__":
     path = "xmls/cartpole.xml"
@@ -191,8 +180,7 @@ if __name__ == "__main__":
             dx = jit_step(mx, dx)
             print(f"Step {i}: qpos={dx.qpos}, qvel={dx.qvel}")
             # print(f"After step: qpos={dx_next.qpos}, qvel={dx_next.qvel}")
-            # data_cpu.qpos = dx.qpos.tolist()
-            # data_cpu.qvel = dx.qvel.tolist()
+
             data_cpu.qpos[:] = np.array(jax.device_get(dx.qpos))
             data_cpu.qvel[:] = np.array(jax.device_get(dx.qvel))
             mujoco.mj_forward(model, data_cpu)
