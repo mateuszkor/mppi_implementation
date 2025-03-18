@@ -3,7 +3,7 @@
 
 
   <!--  Time step is very important any number above 0.008 leads to unstable results original time step is 0.0001 -->
-  <option impratio="10" iterations="1" ls_iterations="4" timestep="0.005">
+  <option impratio="10" iterations="100" ls_iterations="50" timestep="0.005">
     <flag eulerdamp="disable"/>
   </option>
 
@@ -267,6 +267,7 @@
                     <inertial mass="0.017" pos="0 0 0.0145588" quat="1 0 0 1"
                       diaginertia="2.37794e-06 2.27794e-06 1e-06"/>
                     <joint name="rh_THJ1" class="thdistal"/>
+                    <site name="thumb_tip" type="sphere" size="0.02" pos="0 0 0.025"/>
                     <geom class="plastic_visual" mesh="th_distal_pst"/>
                     <geom class="plastic_collision" type="mesh" mesh="th_distal_pst_190" contype="0" conaffinity="2"/>
                   </body>

@@ -126,7 +126,7 @@ class MPPI:
         dx_internal = jax.tree.map(lambda x: x, dx)
 
         split_keys = jax.random.split(key, N_rollouts)
-        noise = jax.vmap(lambda subkey: 2. * jax.random.normal(subkey, (U.shape[0], mx.nu)))(split_keys)
+        noise = jax.vmap(lambda subkey: 1. * jax.random.normal(subkey, (U.shape[0], mx.nu)))(split_keys)
         U_rollouts = jnp.expand_dims(U, axis=0) + noise
         
         simulate_trajectory_batch = jax.vmap(simulate_trajectory_mppi, in_axes=(None, None, None, None, None, 0, None))
@@ -142,10 +142,9 @@ class MPPI:
 
         _, optimal_cost = simulate_trajectory_mppi(mx, dx_internal, set_control, running_cost, terminal_cost, optimal_U, self.ws, final=True)
         print(f"Optimal Cost: {optimal_cost}")
-        print(f"Optimal Cost: {self.loss(optimal_U, self.ws)}")
+        # print(f"Optimal Cost: {self.loss(optimal_U, self.ws)}")
 
         next_U = U = jnp.roll(optimal_U, shift=-1, axis=0) 
-        
         
         return optimal_U[0], next_U
 
@@ -196,7 +195,7 @@ if __name__ == "__main__":
     dx = dx.replace(qpos=dx.qpos.at[:].set(qpos_init))
     # dx = dx.replace(qvel=dx.qvel.at[:].set(qvel_init))
     print(mx.nu)
-    Nsteps, nu, N_rollouts = 100, mx.nu, 500
+    Nsteps, nu, N_rollouts = 40, mx.nu, 80
     goal_quat = jnp.array([0.0,0.0,1.0,0.0])
     weights = jnp.array([1e-4, 5.0, 10.0])
 
@@ -204,12 +203,12 @@ if __name__ == "__main__":
     print(f'Ball goal quat: {goal_quat}')
 
     def set_control(dx, u):
-        return dx.replace(ctrl=dx.ctrl.at[:].set(u))
+        forces = u + dx.qpos[:(nq-8)]
+        return dx.replace(ctrl=dx.ctrl.at[:].set(forces))
 
     def running_cost(dx, ctrl_weight, quat_weight):
         u = dx.ctrl
         ctrl_cost = ctrl_weight * jnp.sum(u ** 2)
-
 
         ball_quat = dx.qpos[24:28]
         quat_diff = quaterion_diff(ball_quat, goal_quat)
@@ -268,10 +267,8 @@ if __name__ == "__main__":
             key, subkey = jax.random.split(key)
 
             u0, U = optimizer.solver(dx, U, subkey)
- 
-            # overflow here
-            dx = set_control(dx, u0)
-            
+
+            dx = set_control(dx, u0)            
             dx = jit_step(mx, dx) #overflow here
 
             print(f"Step {i}: qpos={dx.qpos}")
