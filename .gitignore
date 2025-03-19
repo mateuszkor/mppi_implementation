@@ -1,0 +1,7 @@
+# Ignore wandb directory
+wandb/
+
+# Ignore other typical files or folders
+*.pyc
+__pycache__/
+*.log
