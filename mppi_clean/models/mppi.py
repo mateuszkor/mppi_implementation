@@ -17,6 +17,7 @@ class MPPI:
     set_control: Callable[[jnp.ndarray, jnp.ndarray], jnp.ndarray]
     mx: mjx.Model
     n_rollouts: int
+    use_baseline: bool = False
 
     def solver(self, dx, U, key):
         dx_internal = jax.tree.map(lambda x: x, dx)
@@ -29,7 +30,11 @@ class MPPI:
         x_batch, cost_batch = simulate_trajectory_batch(
             self.mx, dx_internal, self.set_control, self.running_cost, self.terminal_cost, U_rollouts
         )
-    
+
+        if self.use_baseline:
+            baseline = jnp.min(cost_batch)
+            cost_batch -= baseline
+
         weights = jnp.exp(-cost_batch / self.lam) 
         weights /= jnp.sum(weights)  # Normalize the weights to sum to 1
 

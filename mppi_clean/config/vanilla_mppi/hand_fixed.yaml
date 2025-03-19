@@ -1,16 +1,18 @@
-# config/params.yaml
 simulation:
-  name: "hand_fixed"  # Options: cartpole, humanoid, etc.
+  name: "hand_fixed"
   path: "xmls/shadow_hand/scene_right.xml"
 
 mppi:
   n_steps: 100
-  n_rollouts: 10
+  n_rollouts: 100
   lambda: 0.8
   initial_control: "zeros"     # random or zeros
+  sensors: True
 
 costs:
   control_weight: 1e-3
+  quat_weight: 1.0
+  finger_weight: 1.0
   terminal_weight: 1.0
 
 

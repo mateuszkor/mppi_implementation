@@ -16,15 +16,19 @@ import wandb
 def run_simulation(config, headless=False, use_wandb=False):
     
     # Create simulation components using factory
-    path, qpos_init, set_control, running_cost, terminal_cost = SimulationConstructor.create_simulation(
+    qpos_init, set_control, running_cost, terminal_cost = SimulationConstructor.create_simulation(
         config.simulation.name, 
         {
-            'simulation': {'path': config.simulation.path},
-            'costs': {'control_weight': config.costs.control_weight, 'terminal_weight': config.costs.terminal_weight}
+            'simulation': {'path': config.simulation.path, 'use_sensors': config.simulation.use_sensors},
+            'costs': {'control_weight': config.costs.control_weight,
+                      'quat_weight': config.costs.quat_weight,
+                      'finger_weigth': config.costs.finger_weight,
+                      'terminal_weight': config.costs.terminal_weight}
         }
     )
-    
+
     # Load MuJoCo model
+    path = config.simulation.path
     model = mujoco.MjModel.from_xml_path(path)
     mx = mjx.put_model(model)
     dx = mjx.make_data(mx)
@@ -109,14 +113,14 @@ def run_simulation(config, headless=False, use_wandb=False):
             i += 1
             
             # Uncomment to check for task completion
-            if jnp.mod(dx.qpos[1], 2*jnp.pi) < 0.1:
-                print(dx.qpos[0], dx.qpos[1])
-                task_completed = True
+            # if jnp.mod(dx.qpos[1], 2*jnp.pi) < 0.1:
+            #     print(dx.qpos[0], dx.qpos[1])
+            #     task_completed = True
 
 if __name__ == "__main__":
-    config, dict = load_config("config/vanilla_mppi/swingup.yaml")
+    config, config_dict = load_config("config/vanilla_mppi/swingup.yaml")
     headless = True
-    use_wandb = True
+    use_wandb = False
 
     if use_wandb:
         name = generate_name(config=config)

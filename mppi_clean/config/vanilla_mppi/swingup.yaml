@@ -8,6 +8,7 @@ mppi:
   n_rollouts: 10
   lambda: 0.8
   initial_control: "zeros"     # random or zeros
+  baseline: True
 
 costs:
   control_weight: 1e-3
