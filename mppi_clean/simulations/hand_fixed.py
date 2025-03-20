@@ -14,6 +14,23 @@ def quaterion_diff(q1,q2):
         s1 * z2 + x1 * y2 - y1 * x2 + z1 * s2   
     ])
 
+
+def termination_function(goal_quat: jnp.ndarray):
+    def term_func(qpos, epsilon, print_enabled):
+        ball_quat = qpos[24:28]
+        quat_diff = quaterion_diff(ball_quat, goal_quat)
+        angle = 2 * jnp.arccos(jnp.abs(quat_diff[0])) 
+        print(jnp.sum(quat_diff) ** 2)
+        if print_enabled:
+            print(f"Current ball_quat={ball_quat}")
+            print(f"Current ball angular distance={angle}")
+
+        if angle < epsilon:
+            return True
+        return False
+
+    return term_func
+
 def generate_qpos_init(qpos_init, mx):
     if qpos_init == "default":
         return mx.qpos0

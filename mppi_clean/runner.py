@@ -46,7 +46,7 @@ def run_simulation(config, headless=False, use_wandb=False):
     model = mujoco.MjModel.from_xml_path(path)
     mx = mjx.put_model(model)
 
-    qpos_init, set_control, running_cost, terminal_cost = SimulationConstructor.create_simulation(
+    qpos_init, is_completed, set_control, running_cost, terminal_cost = SimulationConstructor.create_simulation(
         config.simulation.name, simulation_config, mx
     )
 
@@ -116,7 +116,7 @@ def run_simulation(config, headless=False, use_wandb=False):
             
             # Step simulation
             dx = jit_step(mx, dx)
-            if config.simulation.name == "swingup":
+            if config.simulation.name == "cartpole":
                 print(f"Step {i}: qpos={dx.qpos}, qvel={dx.qvel}")
             else:
                 ball_quat = dx.qpos[(mx.nq-8):(mx.nq-4)]
@@ -135,16 +135,19 @@ def run_simulation(config, headless=False, use_wandb=False):
                 mujoco.mj_forward(model, data)
                 v.sync()
             
+            if i == 2000: 
+                print("Task reached iteration limit")
+                task_completed = True
+        
+            if is_completed(dx.qpos, 0.01, True) or i == 2000:
+                print("Task completed seccessfully")
+                print(dx.qpos[0], dx.qpos[1])
+                task_completed = True
             i += 1
-            
-            # Uncomment to check for task completion
-            # if jnp.mod(dx.qpos[1], 2*jnp.pi) < 0.1:
-            #     print(dx.qpos[0], dx.qpos[1])
-            #     task_completed = True
 
 if __name__ == "__main__":
     algorithm = "vanilla_mppi"
-    simulation = "hand_fixed"
+    simulation = "hand_fixed"    #swingup, mppi_fixed or mppi_free
 
     config, config_dict = load_config(f"config/{algorithm}/{simulation}.yaml")
     config.print_config()
@@ -152,12 +155,13 @@ if __name__ == "__main__":
     headless = False
     use_wandb = False
     if use_wandb:
-        name = generate_name(config=config)
+        name = generate_name(config_dict)
         wandb.init(config=config, project="mppi_vanilla", name=name, mode="offline")
 
 
+    run_simulation(config, headless, use_wandb)
     try: 
-        run_simulation(config, headless, use_wandb)
+        pass        
 
     except KeyboardInterrupt:
         print("Exiting from the simulation")

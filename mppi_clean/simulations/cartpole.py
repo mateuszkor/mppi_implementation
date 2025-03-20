@@ -2,6 +2,16 @@ import jax.numpy as jnp
 import jax
 from typing import Tuple, Callable, Dict, Any
 
+
+def termination_function(qpos, epsilon: float, print_enabled: bool) -> bool:
+    angle = jnp.mod(qpos[1], 2*jnp.pi)
+    if print_enabled:
+        print(f"Current qpos={qpos}")
+
+    if angle < epsilon:
+        return True
+    return False
+
 def cartpole_costs(config: Dict[str, Any]) -> Tuple[
     Callable[[Any, jnp.ndarray], Any],  # set_control
     Callable[[Any], float],  # running_cost
