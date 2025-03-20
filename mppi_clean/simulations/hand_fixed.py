@@ -2,16 +2,35 @@ import jax.numpy as jnp
 import jax
 from typing import Tuple, Callable, Dict, Any
 
+def quaterion_diff(q1,q2):
+    q1_norm = q1 / jnp.linalg.norm(q1)
+    q1_conj = jnp.array([q1_norm[0], -q1_norm[1], -q1_norm[2], -q1_norm[3]])
+    s1, x1, y1, z1 = q1_conj
+    s2, x2, y2, z2 = q2
+    return jnp.array([
+        s1 * s2 - x1 * x2 - y1 * y2 - z1 * z2, 
+        s1 * x2 + x1 * s2 + y1 * z2 - z1 * y2,  
+        s1 * y2 - x1 * z2 + y1 * s2 + z1 * x2,  
+        s1 * z2 + x1 * y2 - y1 * x2 + z1 * s2   
+    ])
 
-def generate_qpos_init(qpos_init_type):
-    if qpos_init_type == "random":
-        pass
-    elif qpos_init_type == "manual":
-        pass
-    elif qpos_init_type == "zero":
-        pass
+def generate_qpos_init(qpos_init, mx):
+    if qpos_init == "default":
+        return mx.qpos0
+    elif qpos_init == "manual":
+        return jnp.array([
+            -0.03,   -0.36,   -0.35,    0.82,    0.89,    0.61,   
+            -0.021,   1.1,    0.41,    0.88,   -0.074,   0.67,    
+            1.4,   -0.0024,   0.43,   -0.34,    0.54,    1.1,     
+            0.39,   0,   1.2,    0.089,    0.7,     0.6,    
+            0.92,    0.2,    -0.32,    0.03,    
+            1.,     0.,      0.,      0.
+        ])
+    elif qpos_init == "random":
+        key = jax.random.PRNGKey(0)
+        return jax.random.uniform(key, mx.nq, minval=-0.1, maxval=0.1)
     else:
-        raise ValueError(f"Unknown qpos_init_type: {qpos_init_type}")
+        raise ValueError(f"Unknown qpos_init_type: {qpos_init}")
 
 
 def hand_fixed_costs(config: Dict[str, Any]) -> Tuple[
@@ -25,17 +44,48 @@ def hand_fixed_costs(config: Dict[str, Any]) -> Tuple[
     quat_weight = config['costs']['quat_weight']
     finger_weight = config['costs']['finger_weight']
     terminal_weight = config['costs']['terminal_weight']
+    goal_quat = config['hand']['goal_quat']
     
     def set_control(dx, u):
-        forces = u + dx.qpos[:]
-        return dx.replace(ctrl=dx.ctrl.at[:].set(u))
-    
-    def running_cost(dx):
-        u = dx.ctrl 
-        return float(control_weight) * jnp.sum(u ** 2)
-    
+        forces = u + dx.qpos[:24]
+        return dx.replace(ctrl=dx.ctrl.at[:].set(forces))
+
+    def running_cost(dx, optimal=False):
+        u = dx.ctrl
+        ctrl_cost = float(control_weight) * jnp.sum(u ** 2)
+
+        ball_quat = dx.qpos[24:28]
+        quat_diff = quaterion_diff(ball_quat, goal_quat)
+        angle = 2 * jnp.arccos(jnp.abs(quat_diff[0])) 
+        quat_cost = float(quat_weight) * (angle ** 2)
+        # # jax.debug.print("quat_cost: {x}", x=quat_cost)
+
+        thumb_sensor_data = dx.sensordata[0]
+        thumb_contact_cost = 1/(thumb_sensor_data + (1/100))
+        # jax.debug.print("thumb_cost: {x}", x = thumb_contact_cost)
+
+        finger_data, palm_data = dx.sensordata[0:3], dx.sensordata[5]
+        finger_cost = jnp.sum(1/(finger_data + (1/100))) * float(finger_weight)
+
+        return ctrl_cost, quat_cost, finger_cost
+
     def terminal_cost(dx):
-        angle_cost = jnp.sin(dx.qpos[1] / 2) * jnp.pi
-        return float(terminal_weight) * (dx.qpos[0] ** 2 + angle_cost ** 2)
+        # -------- ball pos -------------
+        # ball_position = dx.qpos[24:27]
+        # jax.debug.print("cur pos: {x}", x=ball_position)
+        # goal_position =jnp.array([0.45, 0.0, 0.15]) 
     
+        # pos_cost = 10. * jnp.sum((ball_position - goal_position) ** 2)
+        # jax.debug.print("pos cost: {y}", y=pos_cost)
+
+        # -------- ball quats -----------
+        ball_quat = dx.qpos[24:28]
+        quat_diff = quaterion_diff(ball_quat, goal_quat)
+        angle = 2 * jnp.arccos(jnp.abs(quat_diff[0])) 
+        quat_cost = float(quat_weight) * (angle ** 2)
+
+        # jax.debug.print("quat_cost: {x}", x=quat_cost)
+        return quat_cost
+
+
     return set_control, running_cost, terminal_cost

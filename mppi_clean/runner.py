@@ -3,7 +3,10 @@ import equinox
 import jax
 import jax.numpy as jnp
 import mujoco
+import mujoco.viewer
+
 from mujoco import mjx
+import mujoco.viewer
 import numpy as np
 import contextlib
 
@@ -13,26 +16,43 @@ from models.simulation import make_loss
 from simulations.simulation_constructor import SimulationConstructor
 import wandb
 
+from dataclasses import asdict
+
 def run_simulation(config, headless=False, use_wandb=False):
-    
+
     # Create simulation components using factory
-    qpos_init, set_control, running_cost, terminal_cost = SimulationConstructor.create_simulation(
-        config.simulation.name, 
-        {
-            'simulation': {'path': config.simulation.path, 'use_sensors': config.simulation.use_sensors},
-            'costs': {'control_weight': config.costs.control_weight,
-                      'quat_weight': config.costs.quat_weight,
-                      'finger_weigth': config.costs.finger_weight,
-                      'terminal_weight': config.costs.terminal_weight}
+
+    simulation_config = {
+        'simulation': {
+            'path': config.simulation.path,
+            'sensors': config.simulation.sensors
+        },
+        'costs': {
+            'control_weight': config.costs.control_weight,
+            'quat_weight': config.costs.quat_weight,
+            'finger_weight': config.costs.finger_weight,
+            'terminal_weight': config.costs.terminal_weight
         }
-    )
+    }
+
+    if config.hand:
+        simulation_config['hand'] = {
+            'qpos_init': config.hand.qpos_init,
+            'goal_quat': config.hand.goal_quat  # Keep it as jnp.ndarray
+        }
 
     # Load MuJoCo model
     path = config.simulation.path
     model = mujoco.MjModel.from_xml_path(path)
     mx = mjx.put_model(model)
+
+    qpos_init, set_control, running_cost, terminal_cost = SimulationConstructor.create_simulation(
+        config.simulation.name, simulation_config, mx
+    )
+
     dx = mjx.make_data(mx)
     dx = dx.replace(qpos=dx.qpos.at[:].set(qpos_init))
+    print(dx.qpos)
     
     # Setup MPPI controller
     Nsteps, nu = config.mppi.n_steps, mx.nu
@@ -63,7 +83,8 @@ def run_simulation(config, headless=False, use_wandb=False):
         terminal_cost=terminal_cost, 
         set_control=set_control, 
         mx=mx,
-        n_rollouts=N_rollouts
+        n_rollouts=N_rollouts,
+        baseline=config.mppi.baseline
     )
     
     # Setup viewer
@@ -81,7 +102,7 @@ def run_simulation(config, headless=False, use_wandb=False):
     # Main simulation loop
     i = 1
     task_completed = False
-    U = U_init
+    next_U = U_init
     
     with viewer as v:
         while not task_completed:
@@ -89,13 +110,17 @@ def run_simulation(config, headless=False, use_wandb=False):
             key, subkey = jax.random.split(key)
             
             # Get control and update control sequence
-            u0, U, optimal_cost = optimizer.solver(dx, U, subkey)
+            u0, next_U, optimal_cost = optimizer.solver(dx, next_U, subkey)
             dx = set_control(dx, u0)
             print("optimal_cost", optimal_cost)
             
             # Step simulation
             dx = jit_step(mx, dx)
-            print(f"Step {i}: qpos={dx.qpos}, qvel={dx.qvel}")
+            if config.simulation.name == "swingup":
+                print(f"Step {i}: qpos={dx.qpos}, qvel={dx.qvel}")
+            else:
+                ball_quat = dx.qpos[(mx.nq-8):(mx.nq-4)]
+                print(f"ball_quat {i}: quat={ball_quat}")
 
             # log for wandb here
             if use_wandb:
@@ -118,17 +143,22 @@ def run_simulation(config, headless=False, use_wandb=False):
             #     task_completed = True
 
 if __name__ == "__main__":
-    config, config_dict = load_config("config/vanilla_mppi/swingup.yaml")
-    headless = True
-    use_wandb = False
+    algorithm = "vanilla_mppi"
+    simulation = "hand_fixed"
 
+    config, config_dict = load_config(f"config/{algorithm}/{simulation}.yaml")
+    config.print_config()
+
+    headless = False
+    use_wandb = False
     if use_wandb:
         name = generate_name(config=config)
         wandb.init(config=config, project="mppi_vanilla", name=name, mode="offline")
 
-    try:
+
+    try: 
         run_simulation(config, headless, use_wandb)
-    
+
     except KeyboardInterrupt:
         print("Exiting from the simulation")
     

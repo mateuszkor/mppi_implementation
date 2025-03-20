@@ -23,7 +23,7 @@
     <light pos="0 0 1"/>
     <light pos="0.3 0 1.5" dir="0 0 -1" directional="true"/>
     <geom name="floor" pos="0 0 -0.1" size="0 0 0.05" type="plane" material="groundplane" contype="0" conaffinity="4"/>
-    <body name="object" pos="0.34 -0.01 0.015">
+    <body name="object" pos="0.34 0.01 0.035">
       <joint type="ball" damping="0.01"/>
       <!-- <freejoint/> -->
       <geom type="sphere" material="textured_material" size="0.04" rgba="0.5 0.7 0.5 1"

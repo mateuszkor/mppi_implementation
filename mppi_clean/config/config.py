@@ -1,13 +1,15 @@
 # config/config.py
 import yaml
-from dataclasses import dataclass, is_dataclass
-from typing import Dict, Any
+from dataclasses import dataclass, asdict
+from typing import Dict, Any, Optional
+import jax.numpy as jnp
+import pprint
 
 @dataclass
 class SimulationConfig:
     name: str
     path: str
-    use_sensors: bool
+    sensors: bool
 
 @dataclass
 class MPPIConfig:
@@ -15,6 +17,7 @@ class MPPIConfig:
     n_rollouts: int
     lambda_value: float
     initial_control: float
+    baseline: bool
 
 @dataclass
 class CostsConfig:
@@ -24,10 +27,23 @@ class CostsConfig:
     quat_weight: float
 
 @dataclass
+class HandConfig:
+    qpos_init: str
+    goal_quat: jnp.ndarray
+
+@dataclass
 class Config:
     simulation: SimulationConfig
     mppi: MPPIConfig
     costs: CostsConfig
+    hand: Optional[HandConfig] = None
+
+    def print_config(self):
+        # Convert the Config dataclass to a ictionary
+        config_dict = asdict(self)
+        
+        # Pretty print the dictionary
+        pprint.pprint(config_dict, indent=4)
 
 def load_config(config_path: str) -> Config:
     with open(config_path, 'r') as file:
@@ -36,7 +52,7 @@ def load_config(config_path: str) -> Config:
     simulation_config = SimulationConfig(
         name=config_dict['simulation']['name'],
         path=config_dict['simulation']['path'],
-        use_sensors=config_dict['simulation'].get('use_sensors', None)
+        sensors=config_dict['simulation'].get('sensors', True)
     )
     
     mppi_config = MPPIConfig(
@@ -44,7 +60,7 @@ def load_config(config_path: str) -> Config:
         n_rollouts=config_dict['mppi']['n_rollouts'],
         lambda_value=config_dict['mppi']['lambda'],
         initial_control=config_dict['mppi']['initial_control'],
-        baseline=config_dict['mppi'].get('baseline', None)
+        baseline=config_dict['mppi'].get('baseline', True)
     )
     
     costs_config = CostsConfig(
@@ -54,10 +70,18 @@ def load_config(config_path: str) -> Config:
         terminal_weight=config_dict['costs']['terminal_weight']
     )
     
+    hand_config = None
+    if "hand" in config_dict:
+        hand_config = HandConfig(
+            qpos_init=config_dict['hand']['qpos_init'],
+            goal_quat=jnp.array(config_dict['hand']['goal_quat'])
+        )
+    
     return Config(
         simulation=simulation_config,
         mppi=mppi_config,
-        costs=costs_config
+        costs=costs_config,
+        hand=hand_config
     ), config_dict
 
 def generate_name(config_dict: Dict[str, Any]) -> str:

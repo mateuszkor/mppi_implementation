@@ -4,7 +4,7 @@ import jax.numpy as jnp
 from mujoco import mjx
 from dataclasses import dataclass
 from typing import Callable
-from models.simulation import simulate_trajectory_mppi
+from models.simulation import simulate_trajectory_mppi, simulate_trajectory_mppi_hand
 
 @dataclass
 class MPPI:
@@ -17,7 +17,7 @@ class MPPI:
     set_control: Callable[[jnp.ndarray, jnp.ndarray], jnp.ndarray]
     mx: mjx.Model
     n_rollouts: int
-    use_baseline: bool = False
+    baseline: bool = True
 
     def solver(self, dx, U, key):
         dx_internal = jax.tree.map(lambda x: x, dx)
@@ -26,12 +26,12 @@ class MPPI:
         noise = jax.vmap(lambda subkey: jax.random.normal(subkey, (U.shape[0], self.mx.nu)))(split_keys)
         U_rollouts = jnp.expand_dims(U, axis=0) + noise
 
-        simulate_trajectory_batch = jax.vmap(simulate_trajectory_mppi, in_axes=(None, None, None, None, None, 0))
-        x_batch, cost_batch = simulate_trajectory_batch(
+        simulate_trajectory_batch = jax.vmap(simulate_trajectory_mppi_hand, in_axes=(None, None, None, None, None, 0))
+        _, cost_batch = simulate_trajectory_batch(
             self.mx, dx_internal, self.set_control, self.running_cost, self.terminal_cost, U_rollouts
         )
 
-        if self.use_baseline:
+        if self.baseline:
             baseline = jnp.min(cost_batch)
             cost_batch -= baseline
 
@@ -41,7 +41,7 @@ class MPPI:
         weighted_controls = jnp.einsum('k,kij->ij', weights, noise)
 
         optimal_U = U + weighted_controls
-        _, optimal_cost = simulate_trajectory_mppi(self.mx, dx_internal, self.set_control, self.running_cost, self.terminal_cost, optimal_U)
+        _, optimal_cost = simulate_trajectory_mppi_hand(self.mx, dx_internal, self.set_control, self.running_cost, self.terminal_cost, optimal_U, final=True)
 
-        next_U = jnp.roll(optimal_U, shift=-1, axis=0) 
+        next_U = U = jnp.roll(optimal_U, shift=-1, axis=0) 
         return optimal_U[0], next_U, optimal_cost
