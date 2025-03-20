@@ -12,6 +12,16 @@ def termination_function(qpos, epsilon: float, print_enabled: bool) -> bool:
         return True
     return False
 
+def get_log_data(separate_costs, optimal_cost, step, qpos):
+    running_cost, final_cost = separate_costs
+    log_data = {"optimal_cost": float(optimal_cost), 
+                "Running Cost": float(running_cost), 
+                "Terminal Cost": float(final_cost), 
+                "Angle": float(jnp.degrees(jnp.sin(qpos[1] / 2) * jnp.pi)),
+                "Step": step}
+    return log_data
+
+
 def cartpole_costs(config: Dict[str, Any]) -> Tuple[
     Callable[[Any, jnp.ndarray], Any],  # set_control
     Callable[[Any], float],  # running_cost

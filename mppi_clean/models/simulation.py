@@ -59,12 +59,17 @@ def simulate_trajectory_mppi(mx, dx, set_control_fn, running_cost_fn, terminal_c
         state = jnp.concatenate([dx.qpos, dx.qvel])
         return dx, (state, c)
 
-    dx_final, (states, costs) = jax.lax.scan(step_fn, dx, U)
-    total_cost = jnp.sum(costs) + terminal_cost_fn(dx_final)
+    dx_final, (_, costs) = jax.lax.scan(step_fn, dx, U)
+    terminal_cost = terminal_cost_fn(dx_final)
+    total_cost = jnp.sum(costs) + terminal_cost
+    separate_costs = None
     if final:
-        jax.debug.print("costs: {x}", x=jnp.sum(costs))
-        jax.debug.print("terminal: {x}", x=terminal_cost_fn(dx_final))
-    return None, total_cost
+        separate_costs = (jnp.sum(costs), terminal_cost)
+        # jax.debug.print("costs: {x}", x=jnp.sum(costs))
+        # jax.debug.print("terminal: {x}", x=terminal_cost)
+
+    separate_costs = (jnp.sum(costs), terminal_cost_fn(dx_final))
+    return None, total_cost, separate_costs
 
 @equinox.filter_jit
 def simulate_trajectory_mppi_hand(mx, dx, set_control_fn, running_cost_fn, terminal_cost_fn, U, final=False):
@@ -90,15 +95,20 @@ def simulate_trajectory_mppi_hand(mx, dx, set_control_fn, running_cost_fn, termi
         state = jnp.concatenate([dx.qpos, dx.qvel])
         return dx, (state, ctrl_c, quat_c, finger_c)
 
-    dx_final, (states, ctrl_costs, quat_costs, finger_costs) = jax.lax.scan(step_fn, dx, U)
-    total_cost = jnp.sum(ctrl_costs + quat_costs + finger_costs) + terminal_cost_fn(dx_final)
+    dx_final, (_, ctrl_costs, quat_costs, finger_costs) = jax.lax.scan(step_fn, dx, U)
+    running_cost, terminal_cost = jnp.sum(ctrl_costs + quat_costs + finger_costs), terminal_cost_fn(dx_final)
+    total_cost = running_cost + terminal_cost
+    
+    separate_costs = None
     if final:
-        jax.debug.print("ctrl_costs: {x}", x=jnp.sum(ctrl_costs))
-        jax.debug.print("quat_costs: {x}", x=jnp.sum(quat_costs))
-        jax.debug.print("finger_costs: {x}", x=jnp.sum(finger_costs))
-        jax.debug.print("running_cost: {x}", x=jnp.sum(ctrl_costs + quat_costs + finger_costs))
-        jax.debug.print("terminal: {x}", x=terminal_cost_fn(dx_final))
-    return None, total_cost
+        separate_costs = (jnp.sum(ctrl_costs), jnp.sum(quat_costs), jnp.sum(finger_costs), running_cost, terminal_cost)
+        # jax.debug.print("ctrl_costs: {x}", x=jnp.sum(ctrl_costs))
+        # jax.debug.print("quat_costs: {x}", x=jnp.sum(quat_costs))
+        # jax.debug.print("finger_costs: {x}", x=jnp.sum(finger_costs))
+        # jax.debug.print("running_cost: {x}", x=running_cost)
+        # jax.debug.print("terminal_cost: {x}", x=terminal_cost)
+
+    return None, total_cost, separate_costs
 
 def make_loss(mx, qpos_init, set_control_fn, running_cost_fn, terminal_cost_fn):
     """

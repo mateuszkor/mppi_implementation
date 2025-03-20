@@ -16,6 +16,6 @@ costs:
   terminal_weight: 5.0
 
 hand:
-  qpos_init: "random"            #default, manual or random
+  qpos_init: "random"               #default, manual or random
   goal_quat: [0.0, 0.0, 1.0, 0.0]
 

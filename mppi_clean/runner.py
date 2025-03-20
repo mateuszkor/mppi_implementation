@@ -46,7 +46,7 @@ def run_simulation(config, headless=False, use_wandb=False):
     model = mujoco.MjModel.from_xml_path(path)
     mx = mjx.put_model(model)
 
-    qpos_init, is_completed, set_control, running_cost, terminal_cost = SimulationConstructor.create_simulation(
+    qpos_init, is_completed, get_log_data, set_control, running_cost, terminal_cost = SimulationConstructor.create_simulation(
         config.simulation.name, simulation_config, mx
     )
 
@@ -84,6 +84,7 @@ def run_simulation(config, headless=False, use_wandb=False):
         set_control=set_control, 
         mx=mx,
         n_rollouts=N_rollouts,
+        sim=config.simulation.name,
         baseline=config.mppi.baseline
     )
     
@@ -110,22 +111,17 @@ def run_simulation(config, headless=False, use_wandb=False):
             key, subkey = jax.random.split(key)
             
             # Get control and update control sequence
-            u0, next_U, optimal_cost = optimizer.solver(dx, next_U, subkey)
+            u0, next_U, optimal_cost, separate_costs = optimizer.solver(dx, next_U, subkey)
             dx = set_control(dx, u0)
             print("optimal_cost", optimal_cost)
             
             # Step simulation
             dx = jit_step(mx, dx)
-            if config.simulation.name == "cartpole":
-                print(f"Step {i}: qpos={dx.qpos}, qvel={dx.qvel}")
-            else:
-                ball_quat = dx.qpos[(mx.nq-8):(mx.nq-4)]
-                print(f"ball_quat {i}: quat={ball_quat}")
 
             # log for wandb here
             if use_wandb:
                 print("Logging to wandb")
-                log_data = {"optimal_cost": float(optimal_cost), "Step": i}
+                log_data = get_log_data(separate_costs, optimal_cost, i, dx.qpos)
                 wandb.log(log_data)
 
             # Update viewer
@@ -135,25 +131,25 @@ def run_simulation(config, headless=False, use_wandb=False):
                 mujoco.mj_forward(model, data)
                 v.sync()
             
-            if i == 2000: 
-                print("Task reached iteration limit")
-                task_completed = True
-        
             if is_completed(dx.qpos, 0.01, True) or i == 2000:
                 print("Task completed seccessfully")
-                print(dx.qpos[0], dx.qpos[1])
+                print(f'Final qpos: {dx.qpos}')
+                task_completed = True
+
+            if i == 2000: 
+                print("Task reached iteration limit")
                 task_completed = True
             i += 1
 
 if __name__ == "__main__":
     algorithm = "vanilla_mppi"
-    simulation = "hand_fixed"    #swingup, mppi_fixed or mppi_free
+    simulation = "swingup"    #swingup, mppi_fixed or mppi_free
 
     config, config_dict = load_config(f"config/{algorithm}/{simulation}.yaml")
     config.print_config()
 
     headless = False
-    use_wandb = False
+    use_wandb = True
     if use_wandb:
         name = generate_name(config_dict)
         wandb.init(config=config, project="mppi_vanilla", name=name, mode="offline")

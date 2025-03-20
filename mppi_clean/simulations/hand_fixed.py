@@ -14,16 +14,33 @@ def quaterion_diff(q1,q2):
         s1 * z2 + x1 * y2 - y1 * x2 + z1 * s2   
     ])
 
+def get_log_data(separate_costs, optimal_cost, step, qpos):
+    ctrl_cost, quat_cost, finger_cost, running_cost, final_cost = separate_costs
+
+    ball_quat = qpos[24:28]
+    goal_quat = jnp.array([0.0,0.0,1.0,0.0])
+    quat_diff = quaterion_diff(ball_quat, goal_quat)
+    angle = 2 * jnp.arccos(jnp.abs(quat_diff[0]))
+
+    log_data = {"Optimal cost": float(optimal_cost), 
+                "Control cost": float(ctrl_cost),
+                "Ball orientation cost": float(quat_cost),
+                "Finger sensor cost": float(finger_cost),
+                "Running cost": float(running_cost), 
+                "Terminal cost": float(final_cost), 
+                "Remaining angle": float(jnp.degrees(angle)),
+                "Step": step}
+    return log_data
+
 
 def termination_function(goal_quat: jnp.ndarray):
     def term_func(qpos, epsilon, print_enabled):
         ball_quat = qpos[24:28]
         quat_diff = quaterion_diff(ball_quat, goal_quat)
         angle = 2 * jnp.arccos(jnp.abs(quat_diff[0])) 
-        print(jnp.sum(quat_diff) ** 2)
         if print_enabled:
             print(f"Current ball_quat={ball_quat}")
-            print(f"Current ball angular distance={angle}")
+            print(f"Remaining angle to goal position = {jnp.degrees(angle)}")
 
         if angle < epsilon:
             return True
@@ -31,11 +48,14 @@ def termination_function(goal_quat: jnp.ndarray):
 
     return term_func
 
-def generate_qpos_init(qpos_init, mx):
-    if qpos_init == "default":
-        return mx.qpos0
-    elif qpos_init == "manual":
-        return jnp.array([
+def generate_qpos_init(config_hand, mx):
+    qpos_init_type = config_hand['qpos_init']
+    goal_quat = config_hand['goal_quat']
+
+    if qpos_init_type == "default":
+        qpos_init = mx.qpos0
+    elif qpos_init_type == "manual":
+        qpos_init = jnp.array([
             -0.03,   -0.36,   -0.35,    0.82,    0.89,    0.61,   
             -0.021,   1.1,    0.41,    0.88,   -0.074,   0.67,    
             1.4,   -0.0024,   0.43,   -0.34,    0.54,    1.1,     
@@ -43,12 +63,19 @@ def generate_qpos_init(qpos_init, mx):
             0.92,    0.2,    -0.32,    0.03,    
             1.,     0.,      0.,      0.
         ])
-    elif qpos_init == "random":
+    elif qpos_init_type == "random":
         key = jax.random.PRNGKey(0)
-        return jax.random.uniform(key, mx.nq, minval=-0.1, maxval=0.1)
+        qpos_init = jax.random.uniform(key, mx.nq, minval=-0.1, maxval=0.1)
     else:
         raise ValueError(f"Unknown qpos_init_type: {qpos_init}")
+    
+    qpos_init = qpos_init.at[24:32].set(mx.qpos0[24:32])
 
+    quat_diff = quaterion_diff(qpos_init[24:28], goal_quat)
+    angle = 2 * jnp.arccos(jnp.abs(quat_diff[0])) 
+    print(f"Initial ball_quat={qpos_init[24:28]}")
+    print(f"Remaining angle to goal position = {jnp.degrees(angle)}")
+    return qpos_init
 
 def hand_fixed_costs(config: Dict[str, Any]) -> Tuple[
     jnp.ndarray,  # qpos_init
@@ -102,7 +129,7 @@ def hand_fixed_costs(config: Dict[str, Any]) -> Tuple[
         quat_cost = float(quat_weight) * (angle ** 2)
 
         # jax.debug.print("quat_cost: {x}", x=quat_cost)
-        return quat_cost
+        return quat_cost * float(terminal_weight)
 
 
     return set_control, running_cost, terminal_cost
