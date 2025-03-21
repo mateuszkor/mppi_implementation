@@ -4,20 +4,25 @@ from typing import Tuple, Callable, Dict, Any
 
 
 def termination_function(qpos, epsilon: float, print_enabled: bool) -> bool:
-    angle = jnp.mod(qpos[1], 2*jnp.pi)
+    # angle = jnp.mod(qpos[1], jnp.pi)
+    mod_angle = jnp.mod(qpos[1], 2 * jnp.pi)
+    rem_angle = jnp.pi - jnp.abs(mod_angle - jnp.pi) 
     if print_enabled:
-        print(f"Current qpos={qpos}")
+        # print(f"Current qpos={qpos}")
+        print(f'Remaining angle to goal position = {jnp.degrees(rem_angle)}')
 
-    if angle < epsilon:
+    if rem_angle < epsilon:
         return True
     return False
 
 def get_log_data(separate_costs, optimal_cost, step, qpos):
     running_cost, final_cost = separate_costs
+    mod_angle = jnp.mod(qpos[1], 2 * jnp.pi)
+    rem_angle = jnp.pi - jnp.abs(mod_angle - jnp.pi) 
     log_data = {"optimal_cost": float(optimal_cost), 
                 "Running Cost": float(running_cost), 
                 "Terminal Cost": float(final_cost), 
-                "Angle": float(jnp.degrees(jnp.sin(qpos[1] / 2) * jnp.pi)),
+                "Angle": float(jnp.degrees(rem_angle)),
                 "Step": step}
     return log_data
 

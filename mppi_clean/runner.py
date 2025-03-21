@@ -143,17 +143,16 @@ def run_simulation(config, headless=False, use_wandb=False):
 
 if __name__ == "__main__":
     algorithm = "vanilla_mppi"
-    simulation = "swingup"    #swingup, mppi_fixed or mppi_free
+    simulation = "hand_fixed"    #swingup, hand_fixed or hand_free
 
     config, config_dict = load_config(f"config/{algorithm}/{simulation}.yaml")
     config.print_config()
 
     headless = False
-    use_wandb = True
+    use_wandb = False
     if use_wandb:
         name = generate_name(config_dict)
         wandb.init(config=config, project="mppi_vanilla", name=name, mode="offline")
-
 
     run_simulation(config, headless, use_wandb)
     try: 

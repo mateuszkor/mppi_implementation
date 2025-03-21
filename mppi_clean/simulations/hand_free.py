@@ -21,8 +21,8 @@ def calculate_angular_distance(q1, q2):
 
 def get_log_data(separate_costs, optimal_cost, step, qpos):
     ctrl_cost, quat_cost, finger_cost, running_cost, final_cost = separate_costs
-    ball_quat, goal_quat = qpos[24:28], qpos[28:32]
-    
+    ball_quat, goal_quat = qpos[27:31], qpos[31:35]
+
     angle = calculate_angular_distance(ball_quat, goal_quat)
 
     log_data = {"Optimal cost": float(optimal_cost), 
@@ -35,9 +35,8 @@ def get_log_data(separate_costs, optimal_cost, step, qpos):
                 "Step": step}
     return log_data
 
-
 def termination_function(qpos, epsilon, print_enabled):
-    ball_quat, goal_quat = qpos[24:28], qpos[28:32]
+    ball_quat, goal_quat = qpos[27:31], qpos[31:35]
     angle = calculate_angular_distance(ball_quat, goal_quat)
     if print_enabled:
         print(f"Current ball_quat={ball_quat}")
@@ -59,6 +58,7 @@ def generate_qpos_init(config_hand, mx):
             -0.021,   1.1,    0.41,    0.88,   -0.074,   0.67,    
             1.4,   -0.0024,   0.43,   -0.34,    0.54,    1.1,     
             0.39,   0,   1.2,    0.089,    0.7,     0.6,    
+            1.0,   0.0,    0.0,    0.0,
             0.92,    0.2,    -0.32,    0.03,    
             1.,     0.,      0.,      0.
         ])
@@ -68,15 +68,15 @@ def generate_qpos_init(config_hand, mx):
     else:
         raise ValueError(f"Unknown qpos_init_type: {qpos_init}")
     
-    qpos_init = qpos_init.at[24:32].set(mx.qpos0[24:32])
-    qpos_init = qpos_init.at[28:32].set(goal_quat)
-
-    angle = calculate_angular_distance(qpos_init[24:28], goal_quat)
-    print(f"Initial ball_quat={qpos_init[24:28]}")
+    qpos_init = qpos_init.at[24:31].set(mx.qpos0[24:31])
+    qpos_init = qpos_init.at[31:35].set(goal_quat)
+    angle = calculate_angular_distance(qpos_init[27:31], goal_quat)
+    print(f"Initial ball position={qpos_init[24:27]}")
+    print(f"Initial ball_quat={qpos_init[27:31]}")
     print(f"Remaining angle to goal position = {jnp.degrees(angle)}")
     return qpos_init
 
-def hand_fixed_costs(config: Dict[str, Any]) -> Tuple[
+def hand_free_costs(config: Dict[str, Any]) -> Tuple[
     jnp.ndarray,  # qpos_init
     Callable[[Any, jnp.ndarray], Any],  # set_control
     Callable[[Any], float],  # running_cost
@@ -97,7 +97,7 @@ def hand_fixed_costs(config: Dict[str, Any]) -> Tuple[
         u = dx.ctrl
         ctrl_cost = float(control_weight) * jnp.sum(u ** 2)
 
-        ball_quat = dx.qpos[24:28]
+        ball_quat = dx.qpos[27:31]
         quat_diff = quaterion_diff(ball_quat, goal_quat)
         angle = 2 * jnp.arccos(jnp.abs(quat_diff[0])) 
         quat_cost = float(quat_weight) * (angle ** 2)
@@ -122,7 +122,7 @@ def hand_fixed_costs(config: Dict[str, Any]) -> Tuple[
         # jax.debug.print("pos cost: {y}", y=pos_cost)
 
         # -------- ball quats -----------
-        ball_quat = dx.qpos[24:28]
+        ball_quat = dx.qpos[27:31]
         quat_diff = quaterion_diff(ball_quat, goal_quat)
         angle = 2 * jnp.arccos(jnp.abs(quat_diff[0])) 
         quat_cost = float(quat_weight) * (angle ** 2)
