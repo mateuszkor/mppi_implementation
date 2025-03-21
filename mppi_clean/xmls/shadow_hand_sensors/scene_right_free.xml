@@ -23,9 +23,9 @@
     <light pos="0 0 1"/>
     <light pos="0.3 0 1.5" dir="0 0 -1" directional="true"/>
     <geom name="floor" pos="0 0 -0.1" size="0 0 0.05" type="plane" material="groundplane" contype="0" conaffinity="4"/>
-    <body name="object" pos="0.34 0.0 0.035">
-      <joint type="ball" damping="0.01"/>
-      <!-- <freejoint/> -->
+    <body name="object" pos="0.34 0.0 0.065">
+      <!-- <joint type="ball" damping="0.01"/> -->
+      <freejoint/>
       <geom type="sphere" material="textured_material" size="0.04" rgba="0.5 0.7 0.5 1"
         condim="3" priority="1" friction="1.1 0.01 0.003" contype="7"
         solimp="0.015 0.8 0.04 0.5 2" solref="0.01 1" />
@@ -38,6 +38,12 @@
   </worldbody>
 
   <sensor>
+    <touch name="thumb_touch" site="thumb_tip"/>
+    <touch name="first_touch" site="first_tip"/>
+    <touch name="middle_touch" site="middle_tip"/>
+    <touch name="ring_touch" site="ring_tip"/>
+    <touch name="little_touch" site="little_tip"/>
+    <touch name="palm_touch" site="palm_centre"/>
     <framepos name="palm_position" objtype="site" objname="grasp_site"/>
     <framepos name="object_position" objtype="body" objname="object"/>
     <framequat name="object_orientation" objtype="body" objname="object"/>

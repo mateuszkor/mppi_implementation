@@ -38,6 +38,12 @@
   </worldbody>
 
   <sensor>
+    <touch name="thumb_touch" site="thumb_tip"/>
+    <touch name="first_touch" site="first_tip"/>
+    <touch name="middle_touch" site="middle_tip"/>
+    <touch name="ring_touch" site="ring_tip"/>
+    <touch name="little_touch" site="little_tip"/>
+    <touch name="palm_touch" site="palm_centre"/>
     <framepos name="palm_position" objtype="site" objname="grasp_site"/>
     <framepos name="object_position" objtype="body" objname="object"/>
     <framequat name="object_orientation" objtype="body" objname="object"/>

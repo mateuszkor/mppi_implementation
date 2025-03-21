@@ -91,6 +91,7 @@ def run_simulation(config, headless=False, use_wandb=False):
     # Setup viewer
     if not headless:
         data = mujoco.MjData(model)
+        data.qpos[:] = np.array(jax.device_get(dx.qpos))
         viewer = mujoco.viewer.launch_passive(model, data)
     else:
         viewer = contextlib.nullcontext() 

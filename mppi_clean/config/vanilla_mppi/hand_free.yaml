@@ -1,0 +1,21 @@
+simulation:
+  name: "hand_free"
+  path: "xmls/shadow_hand/scene_right_free.xml"
+  sensors: True
+
+mppi:
+  n_steps: 100
+  n_rollouts: 100
+  lambda: 0.8
+  initial_control: "zeros"     # random or zeros
+
+costs:
+  control_weight: 1e-4
+  quat_weight: 1.0
+  finger_weight: 0.01
+  terminal_weight: 5.0
+
+hand:
+  qpos_init: "random"               #default, manual or random
+  goal_quat: [0.0, 0.0, 1.0, 0.0]
+

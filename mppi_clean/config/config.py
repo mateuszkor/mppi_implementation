@@ -11,6 +11,13 @@ class SimulationConfig:
     path: str
     sensors: bool
 
+    def __post_init__(self):
+        if self.sensors:
+            path_parts = self.path.split('/')
+            if 'shadow_hand' in path_parts and 'shadow_hand_sensors' not in path_parts:
+                path_parts[1] = 'shadow_hand_sensors'
+                self.path = '/'.join(path_parts)
+
 @dataclass
 class MPPIConfig:
     n_steps: int
@@ -48,11 +55,11 @@ class Config:
 def load_config(config_path: str) -> Config:
     with open(config_path, 'r') as file:
         config_dict = yaml.safe_load(file)
-    
+
     simulation_config = SimulationConfig(
         name=config_dict['simulation']['name'],
         path=config_dict['simulation']['path'],
-        sensors=config_dict['simulation'].get('sensors', True)
+        sensors=config_dict['simulation'].get('sensors', False)
     )
     
     mppi_config = MPPIConfig(
@@ -93,7 +100,13 @@ def generate_name(config_dict: Dict[str, Any]) -> str:
     for key, val in config_dict.items():
         for subkey, subval in val.items():
             if subkey == 'path': continue
-            elems.append(subval)
+            elif subkey == 'sensors': 
+                if subval: 
+                    elems.append('sensor')
+                else: 
+                    elems.append('nosensor')
+            else:
+                elems.append(subval)
         if key == 'costs': break
         elems.append("_")
 

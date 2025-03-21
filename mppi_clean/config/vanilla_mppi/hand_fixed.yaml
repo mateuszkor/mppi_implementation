@@ -1,13 +1,13 @@
 simulation:
   name: "hand_fixed"
   path: "xmls/shadow_hand/scene_right.xml"
+  sensors: True
 
 mppi:
   n_steps: 100
   n_rollouts: 100
   lambda: 0.8
   initial_control: "zeros"     # random or zeros
-  sensors: True
 
 costs:
   control_weight: 1e-4
@@ -16,6 +16,6 @@ costs:
   terminal_weight: 5.0
 
 hand:
-  qpos_init: "random"               #default, manual or random
+  qpos_init: "default"               #default, manual or random
   goal_quat: [0.0, 0.0, 1.0, 0.0]
 

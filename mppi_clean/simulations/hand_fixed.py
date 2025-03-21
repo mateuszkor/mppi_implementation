@@ -53,6 +53,14 @@ def generate_qpos_init(config_hand, mx):
 
     if qpos_init_type == "default":
         qpos_init = mx.qpos0
+        qpos_init = jnp.array([
+            0.0041, -0.28, 6.2e-18, -0.026, -0.0007, -0.00029, 
+            6e-18, -0.026, -0.0007, -0.00029, -1.2e-06, -0.026, 
+            -0.0007, -0.00029, -0.0043, -9e-05, -0.026, -0.0007, 
+            -0.00029, -9.7e-05, -0.0016, -0.021, 0.0014, 0.00047, 
+            0.98, 0.095, 0.16, 0.11, 
+            1.0, 0.0, 0.0, 0.0
+        ])
     elif qpos_init_type == "manual":
         qpos_init = jnp.array([
             -0.03,   -0.36,   -0.35,    0.82,    0.89,    0.61,   
@@ -107,7 +115,7 @@ def hand_fixed_costs(config: Dict[str, Any]) -> Tuple[
         thumb_contact_cost = 1/(thumb_sensor_data + (1/100))
         # jax.debug.print("thumb_cost: {x}", x = thumb_contact_cost)
 
-        finger_data, palm_data = dx.sensordata[0:3], dx.sensordata[5]
+        finger_data, palm_data = dx.sensordata[0:5], dx.sensordata[5]
         finger_cost = jnp.sum(1/(finger_data + (1/100))) * float(finger_weight)
 
         return ctrl_cost, quat_cost, finger_cost
