@@ -112,6 +112,7 @@ def run_simulation(config, headless=False, use_wandb=False, batch_size=10, displ
     i = 1
     task_completed = False
     next_U_batch = U_batch
+    completed_list = jnp.array([False] * batch_size)
     
     with viewer as v:
         while not task_completed:
@@ -132,8 +133,14 @@ def run_simulation(config, headless=False, use_wandb=False, batch_size=10, displ
                 print("Logging to wandb")
                 logger_batch = jax.vmap(get_log_data, in_axes=(0,0,None,0))
                 log_data_batch = logger_batch(separate_costs_batch, optimal_cost_batch, i, batch_dx.qpos)
-                print(log_data_batch)
-                wandb.log(log_data_batch)
+                wandb_dict = {}
+                for k,val in log_data_batch.items():
+                    k_dict = k
+                    for i in range(batch_size):
+                        val_dict = jax.device_get(val[i]).item()
+                        wandb_dict[f"{k_dict}_{i}"] = val_dict
+                wandb.log(wandb_dict)
+                # print(wandb_dict)
 
             # Update viewer
             if not headless:
@@ -146,9 +153,12 @@ def run_simulation(config, headless=False, use_wandb=False, batch_size=10, displ
             any_completed = is_completed_batch(batch_dx.qpos, 0.01, True)
             
             if jnp.any(any_completed):
-                idx_completed = jnp.argmax(any_completed)
-                print(f"Task completed successfully at index {idx_completed}")
-                print(f'Final qpos: {batch_dx.qpos[idx_completed]}')
+                for i in range(batch_size):
+                    completed_list = completed_list.at[i].set(True)
+                print(f"Task completed successfully at index {i}")
+
+            if jnp.all(completed_list):
+                print("All tasks completed successfully")
                 task_completed = True
 
             if i == 2000: 
@@ -164,11 +174,11 @@ if __name__ == "__main__":
     config.print_config()
 
     headless = False
-    use_wandb = 1
-    batch_size, display_index = 10, 4
+    use_wandb = True
+    batch_size, display_index = 100, 1
     if use_wandb:
         name = generate_name(config_dict) + "_batch"
-        wandb.init(config=config, project="mppi_vanilla", name=name, mode="offline")
+        wandb.init(config=config, project="mppi_vanilla_batch", name=name, mode="offline")
 
     run_simulation(config, headless, use_wandb, batch_size, display_index)
     try: 
