@@ -11,18 +11,17 @@ def termination_function(qpos, epsilon: float, print_enabled: bool) -> bool:
         # print(f"Current qpos={qpos}")
         print(f'Remaining angle to goal position = {jnp.degrees(rem_angle)}')
 
-    if rem_angle < epsilon:
-        return True
-    return False
+    return jnp.less(rem_angle, epsilon)
+
 
 def get_log_data(separate_costs, optimal_cost, step, qpos):
     running_cost, final_cost = separate_costs
     mod_angle = jnp.mod(qpos[1], 2 * jnp.pi)
     rem_angle = jnp.pi - jnp.abs(mod_angle - jnp.pi) 
-    log_data = {"optimal_cost": float(optimal_cost), 
-                "Running Cost": float(running_cost), 
-                "Terminal Cost": float(final_cost), 
-                "Angle": float(jnp.degrees(rem_angle)),
+    log_data = {"optimal_cost": optimal_cost.astype(float), 
+                "Running Cost": running_cost.astype(float), 
+                "Terminal Cost": final_cost.astype(float), 
+                "Angle": jnp.degrees(rem_angle).astype(float),
                 "Step": step}
     return log_data
 

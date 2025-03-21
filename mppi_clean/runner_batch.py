@@ -18,7 +18,7 @@ import wandb
 
 from dataclasses import asdict
 
-def run_simulation(config, headless=False, use_wandb=False):
+def run_simulation(config, headless=False, use_wandb=False, batch_size=10, display_index=0):
 
     # Create simulation components using factory
 
@@ -52,7 +52,7 @@ def run_simulation(config, headless=False, use_wandb=False):
 
     dx = mjx.make_data(mx)
     dx = dx.replace(qpos=dx.qpos.at[:].set(qpos_init))
-    print(dx.qpos)
+    batch_dx = jax.tree.map(lambda x: jnp.stack([x] * batch_size), dx)
     
     # Setup MPPI controller
     Nsteps, nu = config.mppi.n_steps, mx.nu
@@ -67,11 +67,13 @@ def run_simulation(config, headless=False, use_wandb=False):
 
     # Initialize control sequence
     if config.mppi.initial_control == "zeros":
-        U_init = jnp.zeros((Nsteps, nu))
+        U_batch = jnp.zeros((batch_size, Nsteps, nu))
     elif config.mppi.initial_control == "ones":
-        U_init = jnp.ones((Nsteps, nu)) 
+        U_batch = jnp.ones((batch_size, Nsteps, nu)) 
     elif config.mppi.initial_control == "random":
-        U_init = jax.random.normal(key, (Nsteps, nu))
+        key, subkey = jax.random.split(key)
+        keys = jax.random.split(subkey, batch_size)
+        U_batch = jax.vmap(lambda k: jax.random.normal(k, (Nsteps, nu)))(keys)
     else:
         raise ValueError(f"Unknown initial control: {config.mppi.initial_control}")
     
@@ -92,7 +94,7 @@ def run_simulation(config, headless=False, use_wandb=False):
     # Setup viewer
     if not headless:
         data = mujoco.MjData(model)
-        data.qpos[:] = np.array(jax.device_get(dx.qpos))
+        data.qpos[:] = np.array(jax.device_get(batch_dx.qpos[display_index]))
         viewer = mujoco.viewer.launch_passive(model, data)
     else:
         viewer = contextlib.nullcontext() 
@@ -101,41 +103,52 @@ def run_simulation(config, headless=False, use_wandb=False):
     @equinox.filter_jit
     def jit_step(mx, dx):
         return mjx.step(mx, dx)
+
+    @jax.vmap
+    def batch_set_control(dx, u):
+        return dx.replace(ctrl=dx.ctrl.at[:].set(u))
     
     # Main simulation loop
     i = 1
     task_completed = False
-    next_U = U_init
+    next_U_batch = U_batch
     
     with viewer as v:
         while not task_completed:
             print(f"iteration: {i}")
             key, subkey = jax.random.split(key)
+            split_keys = jax.random.split(subkey, batch_size)
             
             # Get control and update control sequence
-            u0, next_U, optimal_cost, separate_costs = optimizer.solver(dx, next_U, subkey)
-            dx = set_control(dx, u0)
-            print("optimal_cost", optimal_cost)
+            solver_batch = jax.vmap(optimizer.solver, in_axes=(0, 0, 0))
+            u0_batch, next_U_batch, optimal_cost_batch, separate_costs_batch = solver_batch(batch_dx, next_U_batch, split_keys)
             
-            # Step simulation
-            dx = jit_step(mx, dx)
+            batch_dx = batch_set_control(batch_dx, u0_batch)
+            batch_dx = jax.vmap(jit_step, in_axes=(None, 0))(mx, batch_dx)
+            print("optimal_cost", optimal_cost_batch)
 
             # log for wandb here
             if use_wandb:
                 print("Logging to wandb")
-                log_data = get_log_data(separate_costs, optimal_cost, i, dx.qpos)
-                wandb.log(log_data)
+                logger_batch = jax.vmap(get_log_data, in_axes=(0,0,None,0))
+                log_data_batch = logger_batch(separate_costs_batch, optimal_cost_batch, i, batch_dx.qpos)
+                print(log_data_batch)
+                wandb.log(log_data_batch)
 
             # Update viewer
             if not headless:
-                data.qpos[:] = np.array(jax.device_get(dx.qpos))
-                data.qvel[:] = np.array(jax.device_get(dx.qvel))
+                data.qpos[:] = np.array(jax.device_get(batch_dx.qpos[display_index]))
+                data.qvel[:] = np.array(jax.device_get(batch_dx.qvel[display_index]))
                 mujoco.mj_forward(model, data)
                 v.sync()
             
-            if is_completed(dx.qpos, 0.01, True) or i == 2000:
-                print("Task completed seccessfully")
-                print(f'Final qpos: {dx.qpos}')
+            is_completed_batch = jax.vmap(is_completed, in_axes=(0,None,None))
+            any_completed = is_completed_batch(batch_dx.qpos, 0.01, True)
+            
+            if jnp.any(any_completed):
+                idx_completed = jnp.argmax(any_completed)
+                print(f"Task completed successfully at index {idx_completed}")
+                print(f'Final qpos: {batch_dx.qpos[idx_completed]}')
                 task_completed = True
 
             if i == 2000: 
@@ -151,12 +164,13 @@ if __name__ == "__main__":
     config.print_config()
 
     headless = False
-    use_wandb = True
+    use_wandb = 1
+    batch_size, display_index = 10, 4
     if use_wandb:
-        name = generate_name(config_dict)
+        name = generate_name(config_dict) + "_batch"
         wandb.init(config=config, project="mppi_vanilla", name=name, mode="offline")
 
-    run_simulation(config, headless, use_wandb)
+    run_simulation(config, headless, use_wandb, batch_size, display_index)
     try: 
         pass        
 

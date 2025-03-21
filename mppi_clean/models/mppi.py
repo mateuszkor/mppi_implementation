@@ -11,7 +11,6 @@ class MPPI:
     loss: Callable[[jnp.ndarray], float]
     grad_loss: Callable[[jnp.ndarray], jnp.ndarray]  # Gradient of the loss function with respect to controls
     lam: float  # Temperature parameter used for weighting the control rollouts
-    U_init: jnp.ndarray
     running_cost: Callable[[jnp.ndarray], float]
     terminal_cost: Callable[[jnp.ndarray], float]
     set_control: Callable[[jnp.ndarray, jnp.ndarray], jnp.ndarray]

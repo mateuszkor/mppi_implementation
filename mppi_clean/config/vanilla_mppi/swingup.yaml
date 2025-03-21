@@ -7,7 +7,7 @@ mppi:
   n_steps: 100
   n_rollouts: 10
   lambda: 0.8
-  initial_control: "zeros"     # random or zeros
+  initial_control: "ones"     # random or zeros
   baseline: True
 
 costs:
