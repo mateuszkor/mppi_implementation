@@ -8,8 +8,11 @@ from dataclasses import dataclass
 from typing import Callable
 import time
 import contextlib
+import wandb
 
 from numpy.ma.core import inner
+
+wandb.init(project="mppi_hand", name="hand_free_", mode="offline")
 
 def upscale(x):
     """Convert data to 64-bit precision."""
@@ -75,7 +78,7 @@ def simulate_trajectory_mppi(mx, dx, set_control_fn, running_cost_fn, terminal_c
     def step_fn(dx, u):
         dx = set_control_fn(dx, u)
         dx = mjx.step(mx, dx)
-        c = running_cost_fn(dx, weights[0], weights[1])
+        c = running_cost_fn(dx, weights[0], weights[1], optimal=final)
         state = jnp.concatenate([dx.qpos, dx.qvel])
         return dx, (state, c)
 
@@ -144,6 +147,8 @@ class MPPI:
         print(f"Optimal Cost: {optimal_cost}")
         # print(f"Optimal Cost: {self.loss(optimal_U, self.ws)}")
 
+        wandb.log({"Cost": float(optimal_cost), "Step": i})
+
         next_U = U = jnp.roll(optimal_U, shift=-1, axis=0) 
         
         return optimal_U[0], next_U
@@ -158,6 +163,11 @@ if __name__ == "__main__":
     nq = mx.nq
     qpos_init = jax.random.uniform(subkey1, mx.nq, minval=-0.1, maxval=0.1)
     # qvel_init = jax.random.uniform(subkey2, mx.nv, minval=-0.05, maxval=0.05)
+
+    thumb_touch_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SENSOR, "thumb_touch")
+    if thumb_touch_id == -1:
+        raise RuntimeError("Thumb touch sensor not found in model")
+    print(thumb_touch_id)
 
     qpos_init = jnp.array([
         -0.21292259, -0.15179611, -0.15403237,  0.49449011,  0.68263494,  0.55026304,
@@ -183,40 +193,54 @@ if __name__ == "__main__":
         0.92,    0.2,    -0.32,    0.03,    
         1.,     0.,      0.,      0.
     ])
-
-
-    print(mx.nq, mx.nv)
+    
     goal_quat = model.qpos0[(nq-4):nq]
     curr_quat = model.qpos0[(nq-8):(nq-4)]
 
-    qpos_init = qpos_init.at[(nq-11):nq].set(model.qpos0[(nq-11):nq])
-    # qvel_init = qvel_init.at[24:30].set(model.qvel0[24:30])
-    print(qpos_init)
-    dx = dx.replace(qpos=dx.qpos.at[:].set(qpos_init))
-    # dx = dx.replace(qvel=dx.qvel.at[:].set(qvel_init))
-    print(mx.nu)
-    Nsteps, nu, N_rollouts = 40, mx.nu, 80
-    goal_quat = jnp.array([0.0,0.0,1.0,0.0])
-    weights = jnp.array([1e-4, 5.0, 10.0])
 
+    qpos_init = qpos_init.at[(nq-8):nq].set(model.qpos0[(nq-8):nq])
+    # qvel_init = qvel_init.at[24:30].set(model.qvel0[24:30])
+    # dx = dx.replace(qpos=dx.qpos.at[:].set(qpos_init))
+    # dx = dx.replace(qvel=dx.qvel.at[:].set(qvel_init))
+    
+    Nsteps, nu, N_rollouts = 100, mx.nu, 100
+    goal_quat = jnp.array([0.0,0.0,1.0,0.0])
+    weights = jnp.array([1e-4, 0.5, 1.0])
+
+    print(f'dx.qpos: {dx.qpos}')
     print(f'Ball init quat: {curr_quat}')
     print(f'Ball goal quat: {goal_quat}')
 
     def set_control(dx, u):
-        forces = u + dx.qpos[:(nq-8)]
+        forces = u + dx.qpos[:(nq-11)]
         return dx.replace(ctrl=dx.ctrl.at[:].set(forces))
 
-    def running_cost(dx, ctrl_weight, quat_weight):
+    def running_cost(dx, ctrl_weight, quat_weight, optimal=False):
         u = dx.ctrl
         ctrl_cost = ctrl_weight * jnp.sum(u ** 2)
 
-        ball_quat = dx.qpos[24:28]
+        ball_quat = dx.qpos[(nq-8):(nq-4)]
         quat_diff = quaterion_diff(ball_quat, goal_quat)
         angle = 2 * jnp.arccos(jnp.abs(quat_diff[0])) 
         quat_cost = quat_weight * (angle ** 2)
         # # jax.debug.print("quat_cost: {x}", x=quat_cost)
 
-        return ctrl_cost + quat_cost
+        thumb_sensor_data = dx.sensordata[0]
+        thumb_contact_cost = 1/(thumb_sensor_data + (1/100))
+        # jax.debug.print("thumb_cost: {x}", x = thumb_contact_cost)
+
+        finger_data, palm_data = dx.sensordata[0:5], dx.sensordata[5]
+        finger_cost = jnp.sum(1/(finger_data + (1/100))) * 0.01
+        palm_cost = jnp.sum(1/(palm_data + (1/100)))
+
+        # if optimal:
+        #     jax.debug.print("finger_cost: {x}", x=finger_cost)
+        #     jax.debug.print("palm_cost: {x}", x=finger_cost)
+        #     jax.debug.print("ctrl_cost: {x}", x=ctrl_cost)
+        #     jax.debug.print("quat_cost: {x}", x=quat_cost)
+            
+        # return finger_cost
+        return ctrl_cost + quat_cost + finger_cost
 
     def terminal_cost(dx, quat_weight):
         # -------- ball pos -------------
@@ -242,7 +266,8 @@ if __name__ == "__main__":
     task_completed = False
 
     U = jax.random.normal(key, (Nsteps, nu))  # Shape: (Nsteps, nu)
-    optimizer = MPPI(loss=loss_fn, grad_loss=grad_loss_fn, lam=0.8, running_cost=running_cost, terminal_cost=terminal_cost, set_control=set_control, mx=mx, ws=weights)
+    U = jnp.zeros((Nsteps, nu))
+    optimizer = MPPI(loss=loss_fn, grad_loss=grad_loss_fn, lam=0.5, running_cost=running_cost, terminal_cost=terminal_cost, set_control=set_control, mx=mx, ws=weights)
 
     import mujoco
     import mujoco.viewer
@@ -271,11 +296,9 @@ if __name__ == "__main__":
             dx = set_control(dx, u0)            
             dx = jit_step(mx, dx) #overflow here
 
-            print(f"Step {i}: qpos={dx.qpos}")
-            ball_quat = dx.qpos[24:28]
+            # print(f"Step {i}: qpos={dx.qpos}")
+            ball_quat = dx.qpos[(nq-8):(nq-4)]
             print(f"ball_quat {i}: quat={ball_quat}")
-
-
             
             if not headless: 
                 data_cpu.qpos[:] = np.array(jax.device_get(dx.qpos))
@@ -284,10 +307,12 @@ if __name__ == "__main__":
                 v.sync()  
             
             i += 1
-            
-            # val = jnp.sum((quaterion_diff(ball_quat, goal_100uat) ** 2)[1:])
-            # print(val)
-            # if val < 0.001:
-            #     print(f"finished")
-            #     task_completed = True
 
+            
+            val = jnp.sum((quaterion_diff(ball_quat, goal_quat) ** 2)[1:])
+            print(val)
+            if val < 0.001:
+                print(f"finished")
+                task_completed = True
+
+wandb.finish()

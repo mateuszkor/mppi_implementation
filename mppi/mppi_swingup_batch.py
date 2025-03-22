@@ -176,8 +176,8 @@ if __name__ == "__main__":
     with viewer as v:
         while not task_completed:
             print(f"iteration: {i}")
-            # key, subkey = jax.random.split(key)
-            split_keys = jax.random.split(key, batch_size)
+            key, subkey = jax.random.split(key)
+            split_keys = jax.random.split(subkey, batch_size)
 
             solver_batch = jax.vmap(optimizer.solver, in_axes=(0, 0, 0))
             u0_batch, U_batch = solver_batch(batch_dx, U_batch, split_keys)

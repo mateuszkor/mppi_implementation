@@ -10,18 +10,6 @@ import time
 
 from numpy.ma.core import inner
 
-config.update('jax_default_matmul_precision', 'high')
-config.update("jax_enable_x64", True)
-
-def upscale(x):
-    """Convert data to 64-bit precision."""
-    if hasattr(x, 'dtype'):
-        if x.dtype == jnp.int32:
-            return jnp.int64(x)
-        elif x.dtype == jnp.float32:
-            return jnp.float64(x)
-    return x
-
 @equinox.filter_jit
 def simulate_trajectory(mx, qpos_init, set_control_fn, running_cost_fn, terminal_cost_fn, U):
     """
