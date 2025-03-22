@@ -113,7 +113,8 @@ def run_simulation(config, headless=False, use_wandb=False, batch_size=10, displ
     task_completed = False
     next_U_batch = U_batch
     completed_list = jnp.array([False] * batch_size)
-    
+    first_index, first_completion_index = -1, -1
+
     with viewer as v:
         while not task_completed:
             print(f"iteration: {i}")
@@ -126,21 +127,21 @@ def run_simulation(config, headless=False, use_wandb=False, batch_size=10, displ
             
             batch_dx = batch_set_control(batch_dx, u0_batch)
             batch_dx = jax.vmap(jit_step, in_axes=(None, 0))(mx, batch_dx)
-            print("optimal_cost", optimal_cost_batch)
+            # print("optimal_cost", optimal_cost_batch)
 
             # log for wandb here
             if use_wandb:
-                print("Logging to wandb")
+                # print("Logging to wandb")
                 logger_batch = jax.vmap(get_log_data, in_axes=(0,0,None,0))
                 log_data_batch = logger_batch(separate_costs_batch, optimal_cost_batch, i, batch_dx.qpos)
                 wandb_dict = {}
                 for k,val in log_data_batch.items():
                     k_dict = k
-                    for i in range(batch_size):
-                        val_dict = jax.device_get(val[i]).item()
-                        wandb_dict[f"{k_dict}_{i}"] = val_dict
+                    for index in range(batch_size):
+                        val_dict = jax.device_get(val[index]).item()
+                        wandb_dict[f"{k_dict}_{index}"] = val_dict
                 wandb.log(wandb_dict)
-                # print(wandb_dict)
+
 
             # Update viewer
             if not headless:
@@ -150,15 +151,19 @@ def run_simulation(config, headless=False, use_wandb=False, batch_size=10, displ
                 v.sync()
             
             is_completed_batch = jax.vmap(is_completed, in_axes=(0,None,None))
-            any_completed = is_completed_batch(batch_dx.qpos, 0.01, True)
+            any_completed = is_completed_batch(batch_dx.qpos, 1, False)
             
             if jnp.any(any_completed):
-                for i in range(batch_size):
-                    completed_list = completed_list.at[i].set(True)
-                print(f"Task completed successfully at index {i}")
+                for j in range(batch_size):
+                    if any_completed[j] == True:
+                        if first_index == -1: 
+                            first_index = j
+                            first_completion_index = i
+                        completed_list = completed_list.at[j].set(True)
 
             if jnp.all(completed_list):
                 print("All tasks completed successfully")
+                print(f'first_index: {first_index} at iteration {first_completion_index}')
                 task_completed = True
 
             if i == 2000: 
@@ -175,9 +180,9 @@ if __name__ == "__main__":
 
     headless = False
     use_wandb = True
-    batch_size, display_index = 100, 1
+    batch_size, display_index = 50, 24
     if use_wandb:
-        name = generate_name(config_dict) + "_batch"
+        name = generate_name(config_dict) + "_batch_50"
         wandb.init(config=config, project="mppi_vanilla_batch", name=name, mode="offline")
 
     run_simulation(config, headless, use_wandb, batch_size, display_index)

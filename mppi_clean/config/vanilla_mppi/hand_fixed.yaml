@@ -7,7 +7,7 @@ mppi:
   n_steps: 100
   n_rollouts: 100
   lambda: 0.8
-  initial_control: "zeros"     # random or zeros
+  initial_control: "zeros"            #random, ones or zeros
 
 costs:
   control_weight: 1e-4
@@ -17,5 +17,5 @@ costs:
 
 hand:
   qpos_init: "default"               #default, manual or random
-  goal_quat: [0.0, 0.0, 1.0, 0.0]
+  goal_quat: [0.0, 0.0, 1.0, 0.0]    
 

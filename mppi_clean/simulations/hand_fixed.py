@@ -116,7 +116,7 @@ def hand_fixed_costs(config: Dict[str, Any]) -> Tuple[
         # jax.debug.print("thumb_cost: {x}", x = thumb_contact_cost)
 
         finger_data, palm_data = dx.sensordata[0:5], dx.sensordata[5]
-        finger_cost = jnp.sum(1/(finger_data + (1/100))) * float(finger_weight)
+        finger_cost = jnp.sum(1/(finger_data + 1)) * float(finger_weight)
 
         return ctrl_cost, quat_cost, finger_cost
 

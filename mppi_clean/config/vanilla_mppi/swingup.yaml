@@ -1,13 +1,13 @@
 # config/params.yaml
 simulation:
-  name: "cartpole"  # Options: cartpole, humanoid, etc.
+  name: "cartpole"          
   path: "xmls/cartpole.xml"
 
 mppi:
-  n_steps: 100
-  n_rollouts: 10
+  n_steps: 50
+  n_rollouts: 100
   lambda: 0.8
-  initial_control: "ones"     # random or zeros
+  initial_control: "random"     # random or zeros
   baseline: True
 
 costs:
