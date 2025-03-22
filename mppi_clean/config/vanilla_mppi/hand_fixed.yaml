@@ -19,3 +19,8 @@ hand:
   qpos_init: "default"               #default, manual or random
   goal_quat: [0.0, 0.0, 1.0, 0.0]    
 
+
+# [1.0, 0.0, 0.0, 0.0]    # no rotation
+# [0.0, 1.0, 1.0, 0.0]    # 180 deg aroung x-axis
+# [0.0, 0.0, 1.0, 0.0]    # 180 deg aroung y-axis
+# [0.0, 0.0, 0.0, 1.0]    # 180 deg aroung z-axis

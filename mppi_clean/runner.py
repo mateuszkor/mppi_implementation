@@ -46,13 +46,17 @@ def run_simulation(config, headless=False, use_wandb=False):
     model = mujoco.MjModel.from_xml_path(path)
     mx = mjx.put_model(model)
 
+    # Initialize random key
+    key = jax.random.PRNGKey(0)
+    key, subkey = jax.random.split(key)
+
     qpos_init, is_completed, get_log_data, set_control, running_cost, terminal_cost = SimulationConstructor.create_simulation(
-        config.simulation.name, simulation_config, mx
+        config.simulation.name, simulation_config, mx, subkey
     )
 
     dx = mjx.make_data(mx)
     dx = dx.replace(qpos=dx.qpos.at[:].set(qpos_init))
-    print(dx.qpos)
+    print(f'Inittial qpos: {dx.qpos}')
     
     # Setup MPPI controller
     Nsteps, nu = config.mppi.n_steps, mx.nu
@@ -61,9 +65,6 @@ def run_simulation(config, headless=False, use_wandb=False):
     # Create loss function
     loss_fn = make_loss(mx, qpos_init, set_control, running_cost, terminal_cost)
     grad_loss_fn = equinox.filter_jit(jax.jacrev(loss_fn))
-    
-    # Initialize random key
-    key = jax.random.PRNGKey(0)
 
     # Initialize control sequence
     if config.mppi.initial_control == "zeros":
@@ -133,7 +134,7 @@ def run_simulation(config, headless=False, use_wandb=False):
                 mujoco.mj_forward(model, data)
                 v.sync()
             
-            if is_completed(dx.qpos, 0.01, True) or i == 2000:
+            if is_completed(dx.qpos, 1.0, True):
                 print("Task completed seccessfully")
                 print(f'Final qpos: {dx.qpos}')
                 task_completed = True
@@ -145,16 +146,16 @@ def run_simulation(config, headless=False, use_wandb=False):
 
 if __name__ == "__main__":
     algorithm = "vanilla_mppi"
-    simulation = "swingup"    #swingup, hand_fixed or hand_free
+    simulation = "hand_fixed"    #swingup, hand_fixed or hand_free
 
     config, config_dict = load_config(f"config/{algorithm}/{simulation}.yaml")
     config.print_config()
 
-    headless = False
-    use_wandb = True
+    headless = 0
+    use_wandb = 0
     if use_wandb:
         name = generate_name(config_dict)
-        wandb.init(config=config, project="mppi_vanilla", name=name, mode="offline")
+        wandb.init(config=config, project="mppi_vanilla_hand_fixed_sensors", name=name, mode="offline")
 
     run_simulation(config, headless, use_wandb)
     try: 

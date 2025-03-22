@@ -35,19 +35,17 @@ def get_log_data(separate_costs, optimal_cost, step, qpos):
                 "Step": step}
     return log_data
 
-
 def termination_function(qpos, epsilon, print_enabled):
     ball_quat, goal_quat = qpos[24:28], qpos[28:32]
     angle = calculate_angular_distance(ball_quat, goal_quat)
+    angle = jnp.degrees(angle)
     if print_enabled:
         print(f"Current ball_quat={ball_quat}")
-        print(f"Remaining angle to goal position = {jnp.degrees(angle)}")
+        print(f"Remaining angle to goal position = {angle}")
 
-    if angle < epsilon:
-        return True
-    return False
+    return jnp.less(angle, epsilon)
 
-def generate_qpos_init(config_hand, mx):
+def generate_qpos_init(key, config_hand, mx):
     qpos_init_type = config_hand['qpos_init']
     goal_quat = config_hand['goal_quat']
 
@@ -58,7 +56,7 @@ def generate_qpos_init(config_hand, mx):
             6e-18, -0.026, -0.0007, -0.00029, -1.2e-06, -0.026, 
             -0.0007, -0.00029, -0.0043, -9e-05, -0.026, -0.0007, 
             -0.00029, -9.7e-05, -0.0016, -0.021, 0.0014, 0.00047, 
-            0.98, 0.095, 0.16, 0.11, 
+            1.0, 0.0, 0.0, 0.0,
             1.0, 0.0, 0.0, 0.0
         ])
     elif qpos_init_type == "manual":
@@ -71,7 +69,6 @@ def generate_qpos_init(config_hand, mx):
             1.,     0.,      0.,      0.
         ])
     elif qpos_init_type == "random":
-        key = jax.random.PRNGKey(0)
         qpos_init = jax.random.uniform(key, mx.nq, minval=-0.1, maxval=0.1)
     else:
         raise ValueError(f"Unknown qpos_init_type: {qpos_init}")
@@ -112,7 +109,7 @@ def hand_fixed_costs(config: Dict[str, Any]) -> Tuple[
         # # jax.debug.print("quat_cost: {x}", x=quat_cost)
 
         thumb_sensor_data = dx.sensordata[0]
-        thumb_contact_cost = 1/(thumb_sensor_data + (1/100))
+        thumb_contact_cost = 1/(thumb_sensor_data + 1)
         # jax.debug.print("thumb_cost: {x}", x = thumb_contact_cost)
 
         finger_data, palm_data = dx.sensordata[0:5], dx.sensordata[5]
@@ -121,14 +118,6 @@ def hand_fixed_costs(config: Dict[str, Any]) -> Tuple[
         return ctrl_cost, quat_cost, finger_cost
 
     def terminal_cost(dx):
-        # -------- ball pos -------------
-        # ball_position = dx.qpos[24:27]
-        # jax.debug.print("cur pos: {x}", x=ball_position)
-        # goal_position =jnp.array([0.45, 0.0, 0.15]) 
-    
-        # pos_cost = 10. * jnp.sum((ball_position - goal_position) ** 2)
-        # jax.debug.print("pos cost: {y}", y=pos_cost)
-
         # -------- ball quats -----------
         ball_quat = dx.qpos[24:28]
         quat_diff = quaterion_diff(ball_quat, goal_quat)
