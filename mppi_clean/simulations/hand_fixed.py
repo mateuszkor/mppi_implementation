@@ -24,14 +24,13 @@ def get_log_data(separate_costs, optimal_cost, step, qpos):
     ball_quat, goal_quat = qpos[24:28], qpos[28:32]
     
     angle = calculate_angular_distance(ball_quat, goal_quat)
-
-    log_data = {"Optimal cost": float(optimal_cost), 
-                "Control cost": float(ctrl_cost),
-                "Ball orientation cost": float(quat_cost),
-                "Finger sensor cost": float(finger_cost),
-                "Running cost": float(running_cost), 
-                "Terminal cost": float(final_cost), 
-                "Remaining angle": float(jnp.degrees(angle)),
+    log_data = {"Optimal cost": optimal_cost, 
+                "Control cost": ctrl_cost,
+                "Ball orientation cost": quat_cost,
+                "Finger sensor cost": finger_cost,
+                "Running cost": running_cost, 
+                "Terminal cost": final_cost, 
+                "Remaining angle": jnp.degrees(angle),
                 "Step": step}
     return log_data
 
@@ -63,9 +62,9 @@ def generate_qpos_init(key, config_hand, mx):
         qpos_init = jnp.array([
             -0.03,   -0.36,   -0.35,    0.82,    0.89,    0.61,   
             -0.021,   1.1,    0.41,    0.88,   -0.074,   0.67,    
-            1.4,   -0.0024,   0.43,   -0.34,    0.54,    1.1,     
-            0.39,   0,   1.2,    0.089,    0.7,     0.6,    
-            0.92,    0.2,    -0.32,    0.03,    
+            1.4,   -0.0024,   0.43,   -0.34,    0.54,    0.9,     
+            0.39,   0,   1.2,    0.089,    0.25,     0.6,    
+            1.0, 0.0, 0.0, 0.0,    
             1.,     0.,      0.,      0.
         ])
     elif qpos_init_type == "random":
@@ -93,6 +92,7 @@ def hand_fixed_costs(config: Dict[str, Any]) -> Tuple[
     finger_weight = config['costs']['finger_weight']
     terminal_weight = config['costs']['terminal_weight']
     goal_quat = config['hand']['goal_quat']
+    use_sensors = config['simulation']['sensors']
     
     def set_control(dx, u):
         forces = u + dx.qpos[:24]
@@ -108,12 +108,14 @@ def hand_fixed_costs(config: Dict[str, Any]) -> Tuple[
         quat_cost = float(quat_weight) * (angle ** 2)
         # # jax.debug.print("quat_cost: {x}", x=quat_cost)
 
-        thumb_sensor_data = dx.sensordata[0]
-        thumb_contact_cost = 1/(thumb_sensor_data + 1)
-        # jax.debug.print("thumb_cost: {x}", x = thumb_contact_cost)
+        finger_cost = 0.0
+        if use_sensors:
+            thumb_sensor_data = dx.sensordata[0]
+            thumb_contact_cost = (1/(thumb_sensor_data + (1/100)))
+            # jax.debug.print("thumb_cost: {x}", x = thumb_contact_cost)
 
-        finger_data, palm_data = dx.sensordata[0:5], dx.sensordata[5]
-        finger_cost = jnp.sum(1/(finger_data + 1)) * float(finger_weight)
+            finger_data, palm_data = dx.sensordata[1:5], dx.sensordata[5]
+            finger_cost = (jnp.sum(1/(finger_data + (1/25))) + thumb_contact_cost) * float(finger_weight)
 
         return ctrl_cost, quat_cost, finger_cost
 

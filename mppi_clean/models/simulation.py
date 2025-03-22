@@ -102,11 +102,11 @@ def simulate_trajectory_mppi_hand(mx, dx, set_control_fn, running_cost_fn, termi
     separate_costs = None
     if final:
         separate_costs = (jnp.sum(ctrl_costs), jnp.sum(quat_costs), jnp.sum(finger_costs), running_cost, terminal_cost)
-        jax.debug.print("ctrl_costs: {x}", x=jnp.sum(ctrl_costs))
-        jax.debug.print("quat_costs: {x}", x=jnp.sum(quat_costs))
-        jax.debug.print("finger_costs: {x}", x=jnp.sum(finger_costs))
-        jax.debug.print("running_cost: {x}", x=running_cost)
-        jax.debug.print("terminal_cost: {x}", x=terminal_cost)
+        # jax.debug.print("ctrl_costs: {x}", x=jnp.sum(ctrl_costs))
+        # jax.debug.print("quat_costs: {x}", x=jnp.sum(quat_costs))
+        # jax.debug.print("finger_costs: {x}", x=jnp.sum(finger_costs))
+        # jax.debug.print("running_cost: {x}", x=running_cost)
+        # jax.debug.print("terminal_cost: {x}", x=terminal_cost)
 
     return None, total_cost, separate_costs
 

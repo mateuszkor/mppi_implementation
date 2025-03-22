@@ -46,8 +46,11 @@ def run_simulation(config, headless=False, use_wandb=False, batch_size=10, displ
     model = mujoco.MjModel.from_xml_path(path)
     mx = mjx.put_model(model)
 
+    key = jax.random.PRNGKey(0)
+    key, subkey = jax.random.split(key)
+
     qpos_init, is_completed, get_log_data, set_control, running_cost, terminal_cost = SimulationConstructor.create_simulation(
-        config.simulation.name, simulation_config, mx
+        config.simulation.name, simulation_config, mx, subkey
     )
 
     dx = mjx.make_data(mx)
@@ -61,9 +64,6 @@ def run_simulation(config, headless=False, use_wandb=False, batch_size=10, displ
     # Create loss function
     loss_fn = make_loss(mx, qpos_init, set_control, running_cost, terminal_cost)
     grad_loss_fn = equinox.filter_jit(jax.jacrev(loss_fn))
-    
-    # Initialize random key
-    key = jax.random.PRNGKey(0)
 
     # Initialize control sequence
     if config.mppi.initial_control == "zeros":
@@ -127,20 +127,20 @@ def run_simulation(config, headless=False, use_wandb=False, batch_size=10, displ
             
             batch_dx = batch_set_control(batch_dx, u0_batch)
             batch_dx = jax.vmap(jit_step, in_axes=(None, 0))(mx, batch_dx)
-            # print("optimal_cost", optimal_cost_batch)
+            print("optimal_cost", optimal_cost_batch)
 
             # log for wandb here
-            if use_wandb:
+            # if use_wandb:
                 # print("Logging to wandb")
-                logger_batch = jax.vmap(get_log_data, in_axes=(0,0,None,0))
-                log_data_batch = logger_batch(separate_costs_batch, optimal_cost_batch, i, batch_dx.qpos)
-                wandb_dict = {}
-                for k,val in log_data_batch.items():
-                    k_dict = k
-                    for index in range(batch_size):
-                        val_dict = jax.device_get(val[index]).item()
-                        wandb_dict[f"{k_dict}_{index}"] = val_dict
-                wandb.log(wandb_dict)
+            logger_batch = jax.vmap(get_log_data, in_axes=(0,0,None,0))
+            log_data_batch = logger_batch(separate_costs_batch, optimal_cost_batch, i, batch_dx.qpos)
+            wandb_dict = {}
+            for k,val in log_data_batch.items():
+                k_dict = k
+                for index in range(batch_size):
+                    val_dict = jax.device_get(val[index]).item()
+                    wandb_dict[f"{k_dict}_{index}"] = val_dict
+                # wandb.log(wandb_dict)
 
 
             # Update viewer
@@ -151,7 +151,7 @@ def run_simulation(config, headless=False, use_wandb=False, batch_size=10, displ
                 v.sync()
             
             is_completed_batch = jax.vmap(is_completed, in_axes=(0,None,None))
-            any_completed = is_completed_batch(batch_dx.qpos, 1, False)
+            any_completed = is_completed_batch(batch_dx.qpos, 1, True)
             
             if jnp.any(any_completed):
                 for j in range(batch_size):
@@ -173,14 +173,14 @@ def run_simulation(config, headless=False, use_wandb=False, batch_size=10, displ
 
 if __name__ == "__main__":
     algorithm = "vanilla_mppi"
-    simulation = "swingup"    #swingup, hand_fixed or hand_free
+    simulation = "hand_fixed"    #swingup, hand_fixed or hand_free
 
     config, config_dict = load_config(f"config/{algorithm}/{simulation}.yaml")
     config.print_config()
 
-    headless = False
-    use_wandb = True
-    batch_size, display_index = 50, 24
+    headless = 1
+    use_wandb = 0
+    batch_size, display_index = 2, 0
     if use_wandb:
         name = generate_name(config_dict) + "_batch_50"
         wandb.init(config=config, project="mppi_vanilla_batch", name=name, mode="offline")

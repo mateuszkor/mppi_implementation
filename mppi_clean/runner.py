@@ -72,7 +72,9 @@ def run_simulation(config, headless=False, use_wandb=False):
     elif config.mppi.initial_control == "ones":
         U_init = jnp.ones((Nsteps, nu)) 
     elif config.mppi.initial_control == "random":
-        U_init = jax.random.normal(key, (Nsteps, nu))
+        key, subkey = jax.random.split(key)
+        U_init = jax.random.normal(subkey, (Nsteps, nu))
+        print(U_init)
     else:
         raise ValueError(f"Unknown initial control: {config.mppi.initial_control}")
     
@@ -155,7 +157,7 @@ if __name__ == "__main__":
     use_wandb = 0
     if use_wandb:
         name = generate_name(config_dict)
-        wandb.init(config=config, project="mppi_vanilla_hand_fixed_sensors", name=name, mode="offline")
+        wandb.init(config=config, project="mppi_vanilla_hand_fixed_nosensors", name=name, mode="offline")
 
     run_simulation(config, headless, use_wandb)
     try: 
