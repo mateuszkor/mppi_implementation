@@ -111,10 +111,13 @@ def simulate_trajectory_mppi_hand(mx, dx, set_control_fn, running_cost_fn, termi
 
 
 @equinox.filter_jit
-def simulate_trajectory_mppi_gamma(mx, dx, set_control_fn, running_cost_fn, terminal_cost_fn, value_net, U, gamma = 1.0, final=False):
+def simulate_trajectory_mppi_gamma(mx, dx, set_control_fn, running_cost_fn, terminal_cost_fn, value_net, U, gamma, td_step=-1, final=False):
     '''
     used for swingup with gamma discounting and value network
     '''
+    if td_step != -1:
+        U = U[:(td_step+1)]
+
     def step_fn(carry, u):
         dx, t = carry
         dx = set_control_fn(dx, u)

@@ -137,7 +137,7 @@ def run_simulation(config, headless=False, use_wandb=False, algorithm="vanilla_m
                 # wandb.log({"test": 13, "Step": i})
 
             #polo
-            if algorithm == "polo" and i % optimizer.update_frequency == 0:
+            if (algorithm == "polo" or algorithm == "polo_td") and i % optimizer.update_frequency == 0:
                 for _ in range(optimizer.grad_steps):
                     batch = optimizer.replay_buffer.sample(optimizer.mini_batch)
                     if not batch:

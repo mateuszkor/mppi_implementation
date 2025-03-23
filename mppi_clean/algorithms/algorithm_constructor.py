@@ -55,7 +55,7 @@ class OptimizerConstructor:
                 baseline=config.mppi.baseline,
                 sim_traj_mppi_func=None,
             )
-        elif algorithm == "polo":
+        elif algorithm == "polo" or algorithm == "polo_td":
             print("INITIALISING POLO")
             key, key_nn = jax.random.split(key)
             replay_buffer = ReplayBuffer(capacity=100000)
@@ -63,6 +63,14 @@ class OptimizerConstructor:
             value_net = ValueNN(dims=config.network.network_dims, key=key_nn)
             value_optimizer = optax.adam(1e-3)
             value_opt_state = value_optimizer.init(eqx.filter(value_net, eqx.is_array))
+
+            if algorithm == "polo_td": 
+                # if config.mppi.td_step is set to None then this is an error however 0 is valid
+                if config.mppi.td_step is None:
+                    raise ValueError("config.mppi.td_step cannot be None for polo_td algorithm.")
+                td_step = min(config.mppi.td_step, config.mppi.n_steps)
+            else: 
+                td_step = -1
 
             optimizer = POLO(
                 loss=loss_fn,
@@ -84,6 +92,7 @@ class OptimizerConstructor:
                 mini_batch=config.network.mini_batch,
                 grad_steps=config.network.grad_steps,
                 gamma=config.mppi.gamma,
+                td_step=td_step,
                 net_update_type=config.network.net_update_type
             )
 

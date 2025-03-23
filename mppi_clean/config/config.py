@@ -27,6 +27,7 @@ class MPPIConfig:
     initial_control: float
     baseline: bool
     gamma: float
+    td_step: int
 
 @dataclass
 class CostsConfig:
@@ -83,7 +84,8 @@ def load_config(config_path: str) -> Config:
         lambda_value=config_dict['mppi']['lambda'],
         initial_control=config_dict['mppi']['initial_control'],
         baseline=config_dict['mppi'].get('baseline', True),
-        gamma=config_dict['mppi'].get('gamma', 1.0)
+        gamma=config_dict['mppi'].get('gamma', 1.0),
+        td_step=config_dict['mppi'].get('td_step', None)
     )
     
     costs_config = CostsConfig(

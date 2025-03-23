@@ -23,6 +23,7 @@ class POLO(MPPI):
     mini_batch: int
     grad_steps: int
     gamma: float
+    td_step: int
     net_update_type: str
 
     def __post_init__(self):
@@ -40,9 +41,9 @@ class POLO(MPPI):
         noise = jax.vmap(lambda subkey: jax.random.normal(subkey, (U.shape[0], self.mx.nu)))(split_keys)
         U_rollouts = jnp.expand_dims(U, axis=0) + noise
 
-        simulate_trajectory_batch = jax.vmap(self.sim_traj_mppi_func, in_axes=(None, None, None, None, None, None, 0, None))
+        simulate_trajectory_batch = jax.vmap(self.sim_traj_mppi_func, in_axes=(None, None, None, None, None, None, 0, None, None))
         _, cost_batch, _ = simulate_trajectory_batch(
-            self.mx, dx_internal, self.set_control, self.running_cost, self.terminal_cost, self.value_net, U_rollouts, self.gamma
+            self.mx, dx_internal, self.set_control, self.running_cost, self.terminal_cost, self.value_net, U_rollouts, self.gamma, self.td_step
         )
 
         # crucial for hand to use baseline, otherwise the cost will be NaN
@@ -58,7 +59,7 @@ class POLO(MPPI):
         optimal_U = U + weighted_controls
         
         _, optimal_cost, separate_costs = self.sim_traj_mppi_func(
-            self.mx, dx_internal, self.set_control, self.running_cost, self.terminal_cost, self.value_net, optimal_U, self.gamma, True
+            self.mx, dx_internal, self.set_control, self.running_cost, self.terminal_cost, self.value_net, optimal_U, self.gamma, self.td_step, True
         )
 
         # add to the replay buffer
@@ -81,9 +82,9 @@ class POLO(MPPI):
         noise = jax.vmap(lambda subkey: jax.random.normal(subkey, (U.shape[0], self.mx.nu)))(split_keys)
         U_rollouts = jnp.expand_dims(U, axis=0) + noise
  
-        simulate_trajectory_batch = jax.vmap(self.sim_traj_mppi_func, in_axes=(None, None, None, None, None, None, 0, None))
+        simulate_trajectory_batch = jax.vmap(self.sim_traj_mppi_func, in_axes=(None, None, None, None, None, None, 0, None, None))
         _, cost_batch, _ = simulate_trajectory_batch(
-            self.mx, dx_internal, self.set_control, self.running_cost, self.terminal_cost, self.value_net, U_rollouts, self.gamma
+            self.mx, dx_internal, self.set_control, self.running_cost, self.terminal_cost, self.value_net, U_rollouts, self.gamma, self.td_step
         )
 
         if self.baseline:
@@ -97,7 +98,7 @@ class POLO(MPPI):
         optimal_U = U + weighted_controls
 
         _, target_cost, _ = self.sim_traj_mppi_func(
-            self.mx, dx_internal, self.set_control, self.running_cost, self.terminal_cost, self.value_net, optimal_U, self.gamma,
+            self.mx, dx_internal, self.set_control, self.running_cost, self.terminal_cost, self.value_net, optimal_U, self.gamma, self.td_step
         )
         
         return target_cost
