@@ -26,6 +26,7 @@ class MPPIConfig:
     lambda_value: float
     initial_control: float
     baseline: bool
+    gamma: float
 
 @dataclass
 class CostsConfig:
@@ -41,11 +42,22 @@ class HandConfig:
     goal_quat: jnp.ndarray
 
 @dataclass
+class NetworkConfig:
+    network_dims: list
+    update_frequency: int
+    mini_batch: int
+    grad_steps: int
+    net_update_type: str 
+    load_model: bool     
+    save_model: bool     
+
+@dataclass
 class Config:
     simulation: SimulationConfig
     mppi: MPPIConfig
     costs: CostsConfig
     hand: Optional[HandConfig] = None
+    network: Optional[NetworkConfig] = None
 
     def print_config(self):
         # Convert the Config dataclass to a ictionary
@@ -70,7 +82,8 @@ def load_config(config_path: str) -> Config:
         n_rollouts=config_dict['mppi']['n_rollouts'],
         lambda_value=config_dict['mppi']['lambda'],
         initial_control=config_dict['mppi']['initial_control'],
-        baseline=config_dict['mppi'].get('baseline', True)
+        baseline=config_dict['mppi'].get('baseline', True),
+        gamma=config_dict['mppi'].get('gamma', 1.0)
     )
     
     costs_config = CostsConfig(
@@ -87,12 +100,25 @@ def load_config(config_path: str) -> Config:
             qpos_init=config_dict['hand']['qpos_init'],
             goal_quat=jnp.array(config_dict['hand']['goal_quat'])
         )
+
+    network_config = None
+    if 'network' in config_dict:
+        network_config = NetworkConfig(
+            network_dims=config_dict['network']['network_dims'],
+            update_frequency=config_dict['network']['update_frequency'],
+            mini_batch=config_dict['network']['mini_batch'],
+            grad_steps=config_dict['network']['grad_steps'],
+            net_update_type=config_dict['network']['net_update_type'],
+            load_model=config_dict['network'].get('load_model', False),
+            save_model=config_dict['network'].get('save_model', False),
+        )
     
     return Config(
         simulation=simulation_config,
         mppi=mppi_config,
         costs=costs_config,
-        hand=hand_config
+        hand=hand_config,
+        network=network_config
     ), config_dict
 
 def generate_name(config_dict: Dict[str, Any]) -> str:
