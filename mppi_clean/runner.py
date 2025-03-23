@@ -12,26 +12,34 @@ import contextlib
 
 from config.config import load_config, generate_name
 from models.mppi import MPPI
+from models.polo import POLO
 from models.simulation import make_loss
 from simulations.simulation_constructor import SimulationConstructor
+from algorithms.algorithm_constructor import OptimizerConstructor
 import wandb
 
+import optax
+import equinox as eqx
+from nn.base_nn import Network, ValueNN
 from dataclasses import asdict
+from utils.replay_buffer import ReplayBuffer
 
-def run_simulation(config, headless=False, use_wandb=False):
+def run_simulation(config, headless=False, use_wandb=False, algorithm="vanilla_mppi"):
 
     # Create simulation components using factory
 
     simulation_config = {
         'simulation': {
             'path': config.simulation.path,
-            'sensors': config.simulation.sensors
+            'sensors': config.simulation.sensors,
+            'algo': config.simulation.algo
         },
         'costs': {
             'control_weight': config.costs.control_weight,
             'quat_weight': config.costs.quat_weight,
             'finger_weight': config.costs.finger_weight,
-            'terminal_weight': config.costs.terminal_weight
+            'terminal_weight': config.costs.terminal_weight,
+            'intermediate_weight': config.costs.intermediate_weight
         }
     }
 
@@ -74,11 +82,10 @@ def run_simulation(config, headless=False, use_wandb=False):
     elif config.mppi.initial_control == "random":
         key, subkey = jax.random.split(key)
         U_init = jax.random.normal(subkey, (Nsteps, nu))
-        print(U_init)
     else:
         raise ValueError(f"Unknown initial control: {config.mppi.initial_control}")
     
-    # Create MPPI optimizer
+    # Create optimizer
     optimizer = MPPI(
         loss=loss_fn, 
         grad_loss=grad_loss_fn, 
@@ -89,9 +96,54 @@ def run_simulation(config, headless=False, use_wandb=False):
         mx=mx,
         n_rollouts=N_rollouts,
         sim=config.simulation.name,
-        baseline=config.mppi.baseline
+        baseline=config.mppi.baseline,
+        sim_traj_mppi_func=None,
     )
-    
+
+    # optimizer, next_U = OptimizerConstructor.create_optimizer(
+    #     algorithm,
+    #     config,
+    #     mx,
+    #     loss_fn,
+    #     grad_loss_fn,
+    #     running_cost,
+    #     terminal_cost,
+    #     set_control,
+    #     key
+    # )
+
+
+    key, key_nn = jax.random.split(key)
+    replay_buffer = ReplayBuffer(capacity=100000)
+    value_net = ValueNN(dims=[4,64,64,1], key=key_nn)
+    value_optimizer = optax.adam(1e-3)
+    value_opt_state = value_optimizer.init(eqx.filter(value_net, eqx.is_array))
+    update_frequency, mini_batch, grad_steps = 20,20,5
+    net_update_type = "random"  #or optimal (or possibly just value)
+
+    optimizer = POLO(
+        loss=loss_fn, 
+        grad_loss=grad_loss_fn, 
+        lam=config.mppi.lambda_value, 
+        running_cost=running_cost, 
+        terminal_cost=terminal_cost, 
+        set_control=set_control, 
+        mx=mx,
+        n_rollouts=N_rollouts,
+        sim=config.simulation.name,
+        baseline=config.mppi.baseline,
+        sim_traj_mppi_func=None,
+        replay_buffer=replay_buffer,
+        value_net=value_net,
+        value_optimizer=value_optimizer,
+        value_opt_state=value_opt_state,
+        update_frequency=update_frequency,
+        mini_batch=mini_batch,
+        grad_steps=grad_steps,
+        gamma=1.0,
+        net_update_type=net_update_type
+    )
+
     # Setup viewer
     if not headless:
         data = mujoco.MjData(model)
@@ -106,28 +158,57 @@ def run_simulation(config, headless=False, use_wandb=False):
         return mjx.step(mx, dx)
     
     # Main simulation loop
-    i = 1
-    task_completed = False
-    next_U = U_init
-    
     with viewer as v:
+        i = 1
+        task_completed = False
+        next_U = U_init
         while not task_completed:
             print(f"iteration: {i}")
             key, subkey = jax.random.split(key)
             
             # Get control and update control sequence
-            u0, next_U, optimal_cost, separate_costs = optimizer.solver(dx, next_U, subkey)
-            dx = set_control(dx, u0)
-            print("optimal_cost", optimal_cost)
+            u0, next_U, optimal_cost, separate_costs = optimizer.solver(dx, next_U, subkey, i)
             
+            dx = set_control(dx, u0)
             # Step simulation
             dx = jit_step(mx, dx)
 
+            jax.debug.print("optimal_cost = {x}", x=optimal_cost)
             # log for wandb here
             if use_wandb:
                 print("Logging to wandb")
                 log_data = get_log_data(separate_costs, optimal_cost, i, dx.qpos)
                 wandb.log(log_data)
+                # wandb.log({"test": 13, "Step": i})
+
+            #polo
+            if algorithm == "polo" and i % optimizer.update_frequency == 0:
+                for _ in range(optimizer.grad_steps):
+                    batch = optimizer.replay_buffer.sample(optimizer.mini_batch)
+                    if not batch:
+                        continue  # Skip if buffer isn't full enough
+                    
+                    timesteps, states, control_sequences = zip(*batch)
+                    timesteps = jnp.array(timesteps)
+                    states = jnp.array(states)
+                    opt_control_sequences = jnp.array(control_sequences)
+
+                    if optimizer.net_update_type == "random":
+                        key, subkey = jax.random.split(key)
+                        update_U = jax.random.normal(subkey, (optimizer.mini_batch, Nsteps, nu))  # Shape: (Nsteps, nu)
+                    else:
+                        update_U = opt_control_sequences
+
+                    key, subkey = jax.random.split(key)
+                    split_keys = jax.random.split(subkey, optimizer.mini_batch)
+                    
+                    generate_trajectory_targets = jax.vmap(optimizer.mppi_target, in_axes=(0, 0, 0))
+                    targets = generate_trajectory_targets(states, update_U, split_keys)
+                    
+                    print(f"targets: {targets}")
+                    value_loss = optimizer.update_value_function(states, targets)
+                    print(f'Value function loss: {value_loss}')
+                    # wandb.log({"Value Loss": float(value_loss), "Step": i})
 
             # Update viewer
             if not headless:
@@ -136,10 +217,10 @@ def run_simulation(config, headless=False, use_wandb=False):
                 mujoco.mj_forward(model, data)
                 v.sync()
             
-            if is_completed(dx.qpos, 1.0, True):
-                print("Task completed seccessfully")
-                print(f'Final qpos: {dx.qpos}')
-                task_completed = True
+            # if is_completed(dx.qpos, 1.0, True):
+            #     print("Task completed seccessfully")
+            #     print(f'Final qpos: {dx.qpos}')
+            #     task_completed = True
 
             if i == 2000: 
                 print("Task reached iteration limit")
@@ -147,8 +228,8 @@ def run_simulation(config, headless=False, use_wandb=False):
             i += 1
 
 if __name__ == "__main__":
-    algorithm = "vanilla_mppi"
-    simulation = "hand_fixed"    #swingup, hand_fixed or hand_free
+    algorithm = "polo"   #vanilla_mppi, polo
+    simulation = "swingup"    #swingup, hand_fixed or hand_free
 
     config, config_dict = load_config(f"config/{algorithm}/{simulation}.yaml")
     config.print_config()
@@ -159,7 +240,7 @@ if __name__ == "__main__":
         name = generate_name(config_dict)
         wandb.init(config=config, project="mppi_vanilla_hand_fixed_nosensors", name=name, mode="offline")
 
-    run_simulation(config, headless, use_wandb)
+    run_simulation(config, headless, use_wandb, algorithm=algorithm)
     try: 
         pass        
 

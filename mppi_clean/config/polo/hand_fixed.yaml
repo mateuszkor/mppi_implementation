@@ -1,7 +1,6 @@
 simulation:
   name: "hand_fixed"
   path: "xmls/shadow_hand/scene_right.xml"
-  algo: "vanilla_mppi"
   sensors: False
 
 mppi:

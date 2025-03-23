@@ -9,6 +9,7 @@ import pprint
 class SimulationConfig:
     name: str
     path: str
+    algo: str
     sensors: bool
 
     def __post_init__(self):
@@ -32,6 +33,7 @@ class CostsConfig:
     terminal_weight: float
     finger_weight: float
     quat_weight: float
+    intermediate_weight: float
 
 @dataclass
 class HandConfig:
@@ -59,6 +61,7 @@ def load_config(config_path: str) -> Config:
     simulation_config = SimulationConfig(
         name=config_dict['simulation']['name'],
         path=config_dict['simulation']['path'],
+        algo=config_dict['simulation']['algo'],
         sensors=config_dict['simulation'].get('sensors', False)
     )
     
@@ -74,6 +77,7 @@ def load_config(config_path: str) -> Config:
         control_weight=config_dict['costs']['control_weight'],
         finger_weight=config_dict['costs'].get('finger_weight', None),
         quat_weight=config_dict['costs'].get('quat_weight', None),
+        intermediate_weight = config_dict['costs'].get('intermediate_weight', None),
         terminal_weight=config_dict['costs']['terminal_weight']
     )
     

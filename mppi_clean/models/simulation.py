@@ -65,10 +65,9 @@ def simulate_trajectory_mppi(mx, dx, set_control_fn, running_cost_fn, terminal_c
     separate_costs = None
     if final:
         separate_costs = (jnp.sum(costs), terminal_cost)
-        # jax.debug.print("costs: {x}", x=jnp.sum(costs))
-        # jax.debug.print("terminal: {x}", x=terminal_cost)
+        jax.debug.print("costs: {x}", x=jnp.sum(costs))
+        jax.debug.print("terminal: {x}", x=terminal_cost)
 
-    separate_costs = (jnp.sum(costs), terminal_cost_fn(dx_final))
     return None, total_cost, separate_costs
 
 @equinox.filter_jit
@@ -109,6 +108,35 @@ def simulate_trajectory_mppi_hand(mx, dx, set_control_fn, running_cost_fn, termi
         # jax.debug.print("terminal_cost: {x}", x=terminal_cost)
 
     return None, total_cost, separate_costs
+
+
+@equinox.filter_jit
+def simulate_trajectory_mppi_gamma(mx, dx, set_control_fn, running_cost_fn, terminal_cost_fn, value_net, U, gamma = 1.0, final=False):
+    '''
+    used for swingup with gamma discounting and value network
+    '''
+    def step_fn(carry, u):
+        dx, t = carry
+        dx = set_control_fn(dx, u)
+        dx = mjx.step(mx, dx)
+        c = running_cost_fn(dx) * (gamma ** t)
+        state = jnp.concatenate([dx.qpos, dx.qvel])
+        return (dx, t+1), (state, c)
+
+    (dx_final, H), (states, costs) = jax.lax.scan(step_fn, (dx, 0), U)
+    running_costs = jnp.sum(costs)
+
+    state_final = jnp.concatenate([dx_final.qpos, dx_final.qvel])
+    terminal_cost = value_net(state_final) * (gamma ** H)
+    
+    separate_costs = None
+    if final:
+        separate_costs = (jnp.sum(costs), terminal_cost)
+        jax.debug.print("running_costs: {x}", x=running_costs)
+        jax.debug.print("terminal: {x}", x=terminal_cost)
+
+    return None, running_costs + terminal_cost, separate_costs
+
 
 def make_loss(mx, qpos_init, set_control_fn, running_cost_fn, terminal_cost_fn):
     """

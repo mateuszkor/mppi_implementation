@@ -17,8 +17,8 @@ class MPPI:
     mx: mjx.Model
     n_rollouts: int
     sim: str
-    baseline: bool = True
-    sim_traj_mppi_func: Callable = None  # Make this optional with a default value
+    baseline: bool
+    sim_traj_mppi_func: Callable  # Make this optional with a default value
     
     def __post_init__(self):
         # This method is automatically called after __init__
@@ -27,7 +27,7 @@ class MPPI:
         else:
             self.sim_traj_mppi_func = simulate_trajectory_mppi_hand
 
-    def solver(self, dx, U, key):
+    def solver(self, dx, U, key, t):
         dx_internal = jax.tree.map(lambda x: x, dx)
 
         split_keys = jax.random.split(key, self.n_rollouts)
@@ -49,7 +49,9 @@ class MPPI:
         weighted_controls = jnp.einsum('k,kij->ij', weights, noise)
 
         optimal_U = U + weighted_controls
-        _, optimal_cost, separate_costs = self.sim_traj_mppi_func(self.mx, dx_internal, self.set_control, self.running_cost, self.terminal_cost, optimal_U, final=True)
+        _, optimal_cost, separate_costs = self.sim_traj_mppi_func(
+            self.mx, dx_internal, self.set_control, self.running_cost, self.terminal_cost, optimal_U, final=True
+        )
 
         next_U = U = jnp.roll(optimal_U, shift=-1, axis=0) 
         return optimal_U[0], next_U, optimal_cost, separate_costs

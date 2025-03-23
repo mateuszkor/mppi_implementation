@@ -2,15 +2,16 @@
 simulation:
   name: "cartpole"          
   path: "xmls/cartpole.xml"
-  algo: "vanilla_mppi"          # this should be the same as the folder holding this file
+  algo: "polo"
 
 mppi:
   n_steps: 100
   n_rollouts: 100
-  lambda: 0.4
-  initial_control: "random"     # random or zeros
+  lambda: 0.8
+  initial_control: "zeros"     # random or zeros
   baseline: True
 
 costs:
   control_weight: 1e-3
   terminal_weight: 1.0
+  intermediate_weight: 1e-2

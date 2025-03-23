@@ -1,7 +1,6 @@
 simulation:
   name: "hand_free"
   path: "xmls/shadow_hand/scene_right_free.xml"
-  algo: "vanilla_mppi"
   sensors: True
 
 mppi:

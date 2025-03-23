@@ -33,16 +33,21 @@ def cartpole_costs(config: Dict[str, Any]) -> Tuple[
 ]:
     
     """Create cartpole simulation components"""
-    path = config['simulation']['path']
+    algorithm = config['simulation']['algo']
     control_weight = config['costs']['control_weight']
+    intermediate_weight = config['costs']['intermediate_weight']
     terminal_weight = config['costs']['terminal_weight']
     
     def set_control(dx, u):
         return dx.replace(ctrl=dx.ctrl.at[:].set(u))
     
     def running_cost(dx):
-        u = dx.ctrl 
-        return float(control_weight) * jnp.sum(u ** 2)
+        running_cost = jnp.sum(dx.ctrl  ** 2)
+        angle_cost = 0
+        if algorithm == "polo":
+            angle_cost = jnp.sin(dx.qpos[1] / 2) * jnp.pi 
+            positional_cost = dx.qpos[0] ** 2 + angle_cost ** 2
+        return float(control_weight) * running_cost + float(intermediate_weight) * positional_cost
     
     def terminal_cost(dx):
         angle_cost = jnp.sin(dx.qpos[1] / 2) * jnp.pi
