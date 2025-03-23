@@ -43,11 +43,12 @@ def cartpole_costs(config: Dict[str, Any]) -> Tuple[
     
     def running_cost(dx):
         running_cost = jnp.sum(dx.ctrl  ** 2)
-        angle_cost = 0
+        positional_cost = 0.0
         if algorithm == "polo":
             angle_cost = jnp.sin(dx.qpos[1] / 2) * jnp.pi 
-            positional_cost = dx.qpos[0] ** 2 + angle_cost ** 2
-        return float(control_weight) * running_cost + float(intermediate_weight) * positional_cost
+            positional_cost = (dx.qpos[0] ** 2 + angle_cost ** 2) * float(intermediate_weight)
+
+        return float(control_weight) * running_cost + positional_cost
     
     def terminal_cost(dx):
         angle_cost = jnp.sin(dx.qpos[1] / 2) * jnp.pi

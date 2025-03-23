@@ -2,6 +2,7 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 from abc import ABC, abstractmethod
+import os
 
 class Network(eqx.Module, ABC):
     """
@@ -63,3 +64,14 @@ class ValueNN(Network):
             x = layer(x)
             x = self.act(x)
         return self.layers[-1](x).squeeze()
+
+# Function to save the value function and optimizer state
+def save_model(value_net, value_opt_state, save_path="saved_models/value_function.eqx"):
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    print(f"Saving value function to {save_path}")
+    eqx.tree_serialise_leaves(save_path, (value_net, value_opt_state))
+
+def load_model(load_path, like_model, like_opt_state):
+    print(f"Loading value function from {load_path}")
+    value_net, value_opt_state = eqx.tree_deserialise_leaves(load_path, like=(like_model, like_opt_state))
+    return value_net, value_opt_state

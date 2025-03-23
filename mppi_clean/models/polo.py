@@ -103,11 +103,14 @@ class POLO(MPPI):
         return target_cost
     
     def update_value_function(self, states, target_values):
-        def loss_fn(value_net):
-            predicted_values = jax.vmap(value_net)(states)
+        def loss_fn(value_net, states, target_values):
+            predicted_values = jax.vmap(lambda x: value_net(x))(states)
             return jnp.mean((predicted_values - target_values)**2)
 
-        loss, grads = eqx.filter_value_and_grad(loss_fn)(self.value_net)
-        updates, self.value_opt_state = self.value_optimizer.update(grads, self.value_opt_state)
+        loss, grads = eqx.filter_value_and_grad(loss_fn, has_aux=False)(self.value_net, states, target_values)
+
+        updates, new_opt_state = self.value_optimizer.update(grads, self.value_opt_state)
         self.value_net = eqx.apply_updates(self.value_net, updates)
+        self.value_opt_state = new_opt_state
+        
         return loss

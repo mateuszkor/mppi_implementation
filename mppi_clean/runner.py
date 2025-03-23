@@ -20,9 +20,10 @@ import wandb
 
 import optax
 import equinox as eqx
-from nn.base_nn import Network, ValueNN
+from nn.base_nn import Network, ValueNN, save_model, load_model
 from dataclasses import asdict
 from utils.replay_buffer import ReplayBuffer
+import os
 
 def run_simulation(config, headless=False, use_wandb=False, algorithm="vanilla_mppi"):
 
@@ -68,7 +69,6 @@ def run_simulation(config, headless=False, use_wandb=False, algorithm="vanilla_m
     
     # Setup MPPI controller
     Nsteps, nu = config.mppi.n_steps, mx.nu
-    N_rollouts = config.mppi.n_rollouts
     
     # Create loss function
     loss_fn = make_loss(mx, qpos_init, set_control, running_cost, terminal_cost)
@@ -85,63 +85,17 @@ def run_simulation(config, headless=False, use_wandb=False, algorithm="vanilla_m
     else:
         raise ValueError(f"Unknown initial control: {config.mppi.initial_control}")
     
-    # Create optimizer
-    optimizer = MPPI(
-        loss=loss_fn, 
-        grad_loss=grad_loss_fn, 
-        lam=config.mppi.lambda_value, 
-        running_cost=running_cost, 
-        terminal_cost=terminal_cost, 
-        set_control=set_control, 
-        mx=mx,
-        n_rollouts=N_rollouts,
-        sim=config.simulation.name,
-        baseline=config.mppi.baseline,
-        sim_traj_mppi_func=None,
-    )
-
-    # optimizer, next_U = OptimizerConstructor.create_optimizer(
-    #     algorithm,
-    #     config,
-    #     mx,
-    #     loss_fn,
-    #     grad_loss_fn,
-    #     running_cost,
-    #     terminal_cost,
-    #     set_control,
-    #     key
-    # )
-
-
     key, key_nn = jax.random.split(key)
-    replay_buffer = ReplayBuffer(capacity=100000)
-    value_net = ValueNN(dims=[4,64,64,1], key=key_nn)
-    value_optimizer = optax.adam(1e-3)
-    value_opt_state = value_optimizer.init(eqx.filter(value_net, eqx.is_array))
-    update_frequency, mini_batch, grad_steps = 20,20,5
-    net_update_type = "random"  #or optimal (or possibly just value)
-
-    optimizer = POLO(
-        loss=loss_fn, 
-        grad_loss=grad_loss_fn, 
-        lam=config.mppi.lambda_value, 
-        running_cost=running_cost, 
-        terminal_cost=terminal_cost, 
-        set_control=set_control, 
-        mx=mx,
-        n_rollouts=N_rollouts,
-        sim=config.simulation.name,
-        baseline=config.mppi.baseline,
-        sim_traj_mppi_func=None,
-        replay_buffer=replay_buffer,
-        value_net=value_net,
-        value_optimizer=value_optimizer,
-        value_opt_state=value_opt_state,
-        update_frequency=update_frequency,
-        mini_batch=mini_batch,
-        grad_steps=grad_steps,
-        gamma=1.0,
-        net_update_type=net_update_type
+    optimizer = OptimizerConstructor.create_optimizer(
+        algorithm,
+        config,
+        mx,
+        loss_fn,
+        grad_loss_fn,
+        running_cost,
+        terminal_cost,
+        set_control,
+        key_nn
     )
 
     # Setup viewer
@@ -160,6 +114,7 @@ def run_simulation(config, headless=False, use_wandb=False, algorithm="vanilla_m
     # Main simulation loop
     with viewer as v:
         i = 1
+        value_i = 1
         task_completed = False
         next_U = U_init
         while not task_completed:
@@ -208,7 +163,9 @@ def run_simulation(config, headless=False, use_wandb=False, algorithm="vanilla_m
                     print(f"targets: {targets}")
                     value_loss = optimizer.update_value_function(states, targets)
                     print(f'Value function loss: {value_loss}')
-                    # wandb.log({"Value Loss": float(value_loss), "Step": i})
+                    if use_wandb:
+                        wandb.log({"Value Loss": float(value_loss), "Network Update Step": value_i})
+                    value_i += 1
 
             # Update viewer
             if not headless:
@@ -222,9 +179,11 @@ def run_simulation(config, headless=False, use_wandb=False, algorithm="vanilla_m
             #     print(f'Final qpos: {dx.qpos}')
             #     task_completed = True
 
-            if i == 2000: 
+            if i == 1000: 
                 print("Task reached iteration limit")
                 task_completed = True
+                if config.network.save_model:
+                    save_model(optimizer.value_net, optimizer.value_opt_state, f"saved_models/value_function_{config.simulation.name}.eqx")
             i += 1
 
 if __name__ == "__main__":
@@ -235,10 +194,10 @@ if __name__ == "__main__":
     config.print_config()
 
     headless = 0
-    use_wandb = 0
+    use_wandb = 1
     if use_wandb:
         name = generate_name(config_dict)
-        wandb.init(config=config, project="mppi_vanilla_hand_fixed_nosensors", name=name, mode="offline")
+        wandb.init(config=config, project="POLO_tests", name=name, mode="online")
 
     run_simulation(config, headless, use_wandb, algorithm=algorithm)
     try: 
