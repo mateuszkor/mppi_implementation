@@ -19,6 +19,16 @@ def calculate_angular_distance(q1, q2):
     angle = 2 * jnp.arccos(jnp.abs(quat_diff[0])) 
     return angle
 
+def termination_function(qpos, epsilon, print_enabled):
+    ball_quat, goal_quat = qpos[24:28], qpos[28:32]
+    angle = calculate_angular_distance(ball_quat, goal_quat)
+    angle = jnp.degrees(angle)
+    if print_enabled:
+        print(f"Current ball_quat={ball_quat}")
+        print(f"Remaining angle to goal position = {angle}")
+
+    return jnp.less(angle, epsilon)
+
 def get_log_data(separate_costs, optimal_cost, step, qpos):
     ctrl_cost, quat_cost, finger_cost, running_cost, final_cost = separate_costs
     ball_quat, goal_quat = qpos[24:28], qpos[28:32]
@@ -33,16 +43,6 @@ def get_log_data(separate_costs, optimal_cost, step, qpos):
                 "Remaining angle": jnp.degrees(angle),
                 "Step": step}
     return log_data
-
-def termination_function(qpos, epsilon, print_enabled):
-    ball_quat, goal_quat = qpos[24:28], qpos[28:32]
-    angle = calculate_angular_distance(ball_quat, goal_quat)
-    angle = jnp.degrees(angle)
-    if print_enabled:
-        print(f"Current ball_quat={ball_quat}")
-        print(f"Remaining angle to goal position = {angle}")
-
-    return jnp.less(angle, epsilon)
 
 def generate_qpos_init(key, config_hand, mx):
     qpos_init_type = config_hand['qpos_init']

@@ -2,14 +2,17 @@ simulation:
   name: "hand_fixed"
   path: "xmls/shadow_hand/scene_right.xml"
   sensors: False
+  algo: "polo"
 
 mppi:
   n_steps: 50
   n_rollouts: 100
   lambda: 0.5
   initial_control: "random"            #random, ones or zeros
+  baseline: True
+  gamma: 1.0
 
-costs:
+costs:                              # intermdiate weight not needed for hand
   control_weight: 1e-4
   quat_weight: 10.0
   finger_weight: 0.0
@@ -18,6 +21,15 @@ costs:
 hand:
   qpos_init: "manual"               #default, manual or random
   goal_quat: [0.0, 0.0, 1.0, 0.0]    
+
+network: 
+  network_dims: [62,128,128,64,1]    #mx.nq is 32; mx.nv is 30 so first layer is 62
+  update_frequency: 20
+  mini_batch: 5
+  grad_steps: 1
+  net_update_type: "random"     # random or optimal
+  load_model: False        
+  save_model: False   
 
 
 # [1.0, 0.0, 0.0, 0.0]    # no rotation

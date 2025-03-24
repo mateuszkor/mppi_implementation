@@ -187,8 +187,8 @@ def run_simulation(config, headless=False, use_wandb=False, algorithm="vanilla_m
             i += 1
 
 if __name__ == "__main__":
-    algorithm = "polo"   #vanilla_mppi, polo
-    simulation = "swingup"    #swingup, hand_fixed or hand_free
+    algorithm = "polo"          #vanilla_mppi, polo or polo_td
+    simulation = "hand_free"    #swingup, hand_fixed or hand_free
 
     config, config_dict = load_config(f"config/{algorithm}/{simulation}.yaml")
     config.print_config()
@@ -197,7 +197,8 @@ if __name__ == "__main__":
     use_wandb = 1
     if use_wandb:
         name = generate_name(config_dict)
-        wandb.init(config=config, project="POLO_tests", name=name, mode="online")
+        print(f"Name: {name}")
+        wandb.init(config=config, project="POLO_hand_tests", name=name, mode="online")
 
     run_simulation(config, headless, use_wandb, algorithm=algorithm)
     try: 

@@ -140,6 +140,40 @@ def simulate_trajectory_mppi_gamma(mx, dx, set_control_fn, running_cost_fn, term
 
     return None, running_costs + terminal_cost, separate_costs
 
+@equinox.filter_jit
+def simulate_trajectory_mppi_hand_gamma(mx, dx, set_control_fn, running_cost_fn, terminal_cost_fn, value_net, U, gamma, td_step=-1, final=False):
+    '''
+    used for hand fixed and free with gamma discounting and value network
+    '''
+    if td_step != -1:
+        U = U[:(td_step+1)]
+
+    def step_fn(carry, u):
+        dx, t = carry
+        dx = set_control_fn(dx, u)
+        dx = mjx.step(mx, dx)
+        # ctrl_c, quat_c, finger_c = running_cost_fn(dx) * (gamma ** t)
+        ctrl_c, quat_c, finger_c = jax.tree_map(lambda x: x * (gamma ** t), running_cost_fn(dx))
+        state = jnp.concatenate([dx.qpos, dx.qvel])
+        return (dx, t+1), (state, ctrl_c, quat_c, finger_c)
+
+    (dx_final, H), (states, ctrl_costs, quat_costs, finger_costs) = jax.lax.scan(step_fn, (dx, 0), U)
+    running_cost = jnp.sum(ctrl_costs + quat_costs + finger_costs)
+
+    state_final = jnp.concatenate([dx_final.qpos, dx_final.qvel])
+    terminal_cost = value_net(state_final) * (gamma ** H)
+    
+    separate_costs = None
+    if final:
+        separate_costs = (jnp.sum(ctrl_costs), jnp.sum(quat_costs), jnp.sum(finger_costs), running_cost, terminal_cost)
+        # jax.debug.print("ctrl_costs: {x}", x=jnp.sum(ctrl_costs))
+        # jax.debug.print("quat_costs: {x}", x=jnp.sum(quat_costs))
+        # jax.debug.print("finger_costs: {x}", x=jnp.sum(finger_costs))
+        # jax.debug.print("running_cost: {x}", x=running_cost)
+        # jax.debug.print("terminal_cost: {x}", x=terminal_cost)
+
+    return None, running_cost + terminal_cost, separate_costs
+
 
 def make_loss(mx, qpos_init, set_control_fn, running_cost_fn, terminal_cost_fn):
     """

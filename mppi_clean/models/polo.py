@@ -4,7 +4,7 @@ import jax.numpy as jnp
 from mujoco import mjx
 from dataclasses import dataclass
 from typing import Callable
-from models.simulation import simulate_trajectory_mppi_gamma, simulate_trajectory_mppi_hand
+from models.simulation import simulate_trajectory_mppi_gamma, simulate_trajectory_mppi_hand_gamma
 from utils.replay_buffer import ReplayBuffer
 import optax
 from nn.base_nn import Network, ValueNN
@@ -31,7 +31,7 @@ class POLO(MPPI):
         if self.sim == "cartpole":
             self.sim_traj_mppi_func = simulate_trajectory_mppi_gamma
         else:
-            self.sim_traj_mppi_func = simulate_trajectory_mppi_hand
+            self.sim_traj_mppi_func = simulate_trajectory_mppi_hand_gamma
 
     def solver(self, dx, U, key, t):
         # print("\nMPPI Solver")
