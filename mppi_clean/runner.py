@@ -69,6 +69,7 @@ def run_simulation(config, headless=False, use_wandb=False, algorithm="vanilla_m
     
     # Setup MPPI controller
     Nsteps, nu = config.mppi.n_steps, mx.nu
+    print(nu)
     
     # Create loss function
     loss_fn = make_loss(mx, qpos_init, set_control, running_cost, terminal_cost)
@@ -187,14 +188,14 @@ def run_simulation(config, headless=False, use_wandb=False, algorithm="vanilla_m
             i += 1
 
 if __name__ == "__main__":
-    algorithm = "polo"          #vanilla_mppi, polo or polo_td
-    simulation = "hand_free"    #swingup, hand_fixed or hand_free
+    algorithm = "vanilla_mppi"     #vanilla_mppi, polo or polo_td
+    simulation = "hand_fixed"    #swingup, hand_fixed or hand_free
 
     config, config_dict = load_config(f"config/{algorithm}/{simulation}.yaml")
     config.print_config()
 
     headless = 0
-    use_wandb = 1
+    use_wandb = 0
     if use_wandb:
         name = generate_name(config_dict)
         print(f"Name: {name}")

@@ -25,13 +25,15 @@ def run_simulation(config, headless=False, use_wandb=False, batch_size=10, displ
     simulation_config = {
         'simulation': {
             'path': config.simulation.path,
-            'sensors': config.simulation.sensors
+            'sensors': config.simulation.sensors,
+            'algo': config.simulation.algo
         },
         'costs': {
             'control_weight': config.costs.control_weight,
             'quat_weight': config.costs.quat_weight,
             'finger_weight': config.costs.finger_weight,
-            'terminal_weight': config.costs.terminal_weight
+            'terminal_weight': config.costs.terminal_weight,
+            'intermediate_weight': config.costs.intermediate_weight
         }
     }
 
@@ -88,7 +90,8 @@ def run_simulation(config, headless=False, use_wandb=False, batch_size=10, displ
         mx=mx,
         n_rollouts=N_rollouts,
         sim=config.simulation.name,
-        baseline=config.mppi.baseline
+        baseline=config.mppi.baseline,
+        sim_traj_mppi_func=None
     )
     
     # Setup viewer
@@ -122,25 +125,25 @@ def run_simulation(config, headless=False, use_wandb=False, batch_size=10, displ
             split_keys = jax.random.split(subkey, batch_size)
             
             # Get control and update control sequence
-            solver_batch = jax.vmap(optimizer.solver, in_axes=(0, 0, 0))
-            u0_batch, next_U_batch, optimal_cost_batch, separate_costs_batch = solver_batch(batch_dx, next_U_batch, split_keys)
+            solver_batch = jax.vmap(optimizer.solver, in_axes=(0, 0, 0, None))
+            u0_batch, next_U_batch, optimal_cost_batch, separate_costs_batch = solver_batch(batch_dx, next_U_batch, split_keys, i)
             
             batch_dx = batch_set_control(batch_dx, u0_batch)
             batch_dx = jax.vmap(jit_step, in_axes=(None, 0))(mx, batch_dx)
             print("optimal_cost", optimal_cost_batch)
 
             # log for wandb here
-            # if use_wandb:
-                # print("Logging to wandb")
-            logger_batch = jax.vmap(get_log_data, in_axes=(0,0,None,0))
-            log_data_batch = logger_batch(separate_costs_batch, optimal_cost_batch, i, batch_dx.qpos)
-            wandb_dict = {}
-            for k,val in log_data_batch.items():
-                k_dict = k
-                for index in range(batch_size):
-                    val_dict = jax.device_get(val[index]).item()
-                    wandb_dict[f"{k_dict}_{index}"] = val_dict
-                # wandb.log(wandb_dict)
+            if use_wandb:
+                print("Logging to wandb")
+                logger_batch = jax.vmap(get_log_data, in_axes=(0,0,None,0))
+                log_data_batch = logger_batch(separate_costs_batch, optimal_cost_batch, i, batch_dx.qpos)
+                wandb_dict = {}
+                for k,val in log_data_batch.items():
+                    k_dict = k
+                    for index in range(batch_size):
+                        val_dict = jax.device_get(val[index]).item()
+                        wandb_dict[f"{k_dict}_{index}"] = val_dict
+                wandb.log(wandb_dict)
 
 
             # Update viewer
@@ -179,11 +182,11 @@ if __name__ == "__main__":
     config.print_config()
 
     headless = 1
-    use_wandb = 0
-    batch_size, display_index = 2, 0
+    use_wandb = 1
+    batch_size, display_index = 10, 0
     if use_wandb:
-        name = generate_name(config_dict) + "_batch_50"
-        wandb.init(config=config, project="mppi_vanilla_batch", name=name, mode="offline")
+        name = generate_name(config_dict) + "_batch"
+        wandb.init(config=config, project="mppi_vanilla_batch_hand", name=name, mode="offline")
 
     run_simulation(config, headless, use_wandb, batch_size, display_index)
     try: 

@@ -5,9 +5,9 @@ simulation:
   algo: "vanilla_mppi"          # this should be the same as the folder holding this file
 
 mppi:
-  n_steps: 100
+  n_steps: 50
   n_rollouts: 100
-  lambda: 0.4
+  lambda: 0.1
   initial_control: "random"     # random or zeros
   baseline: True
 
