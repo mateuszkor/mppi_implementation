@@ -6,17 +6,18 @@ simulation:
 
 mppi:
   n_steps: 100
-  n_rollouts: 100
-  lambda: 0.8
-  initial_control: "zeros"     # random or zeros
+  n_rollouts: 500
+  lambda: 0.5
+  initial_control: "random"     # random or zeros
+  baseline: True
 
 costs:
   control_weight: 1e-4
-  quat_weight: 1.0
-  finger_weight: 0.01
+  quat_weight: 10.0
+  finger_weight: 0.1
   terminal_weight: 5.0
 
 hand:
-  qpos_init: "random"               #default, manual or random
+  qpos_init: "default"               #default, manual or random
   goal_quat: [0.0, 0.0, 1.0, 0.0]
 

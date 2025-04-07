@@ -20,7 +20,8 @@ class OptimizerConstructor:
         running_cost,
         terminal_cost,
         set_control,
-        key
+        key,
+        save_name
     ) -> Tuple[Any, jnp.ndarray]:
         """
         Factory method to create an optimizer based on the specified algorithm.
@@ -97,7 +98,9 @@ class OptimizerConstructor:
             )
 
             # Load the saved model if it exists
-            load_path = f"saved_models/value_function_{config.simulation.name}.eqx"  # Change to the correct path
+            load_path = f"saved_models/value_function_random_{config.simulation.name}.eqx"  # Change to the correct path
+            load_path = save_name
+            print("PATH", load_path)
             if os.path.exists(load_path) and config.network.load_model:
                 print("Loading pre-trained model...")
                 optimizer.value_net, optimizer.value_opt_state = load_model(load_path, value_net, value_opt_state)

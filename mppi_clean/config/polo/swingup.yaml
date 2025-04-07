@@ -7,7 +7,7 @@ simulation:
 mppi:
   n_steps: 100
   n_rollouts: 100
-  lambda: 0.8
+  lambda: 0.1
   initial_control: "zeros"     # random or zeros
   baseline: True
   gamma: 1.0                   # gamma used only with POLO
@@ -15,13 +15,13 @@ mppi:
 costs:
   control_weight: 1e-3
   terminal_weight: 1.0
-  intermediate_weight: 1e-1    # intermedate costs used only with POLO
+  intermediate_weight: 1e-2    # intermedate costs used only with POLO
 
 network:
   network_dims: [4,64,64,1]
   update_frequency: 20
   mini_batch: 20
-  grad_steps: 1
+  grad_steps: 0
   net_update_type: "random"     # random or optimal
-  load_model: False        
+  load_model: True        
   save_model: False     

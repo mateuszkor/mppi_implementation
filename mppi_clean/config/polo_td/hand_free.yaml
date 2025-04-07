@@ -2,17 +2,18 @@ simulation:
   name: "hand_free"
   path: "xmls/shadow_hand/scene_right_free.xml"
   sensors: True
-  algo: "polo"
+  algo: "polo_td"
 
 mppi:
   n_steps: 100
   n_rollouts: 500
   lambda: 0.5
-  initial_control: "random"            #random, ones or zeros
+  initial_control: "random"     # random or zeros
   baseline: True
   gamma: 0.99
+  td_step: 55
 
-costs:                              # intermdiate weight not needed for hand
+costs:
   control_weight: 1e-4
   quat_weight: 10.0
   finger_weight: 0.1

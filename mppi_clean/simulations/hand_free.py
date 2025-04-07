@@ -1,6 +1,7 @@
 import jax.numpy as jnp
 import jax
 from typing import Tuple, Callable, Dict, Any
+import equinox
 
 def quaterion_diff(q1,q2):
     q1_norm = q1 / jnp.linalg.norm(q1)
@@ -34,14 +35,14 @@ def get_log_data(separate_costs, optimal_cost, step, qpos):
     ball_quat, goal_quat = qpos[27:31], qpos[31:35]
 
     angle = calculate_angular_distance(ball_quat, goal_quat)
-    log_data = {"Optimal cost": float(optimal_cost), 
-                "Control cost": float(ctrl_cost),
-                "Ball orientation cost": float(quat_cost),
-                "Finger sensor cost": float(finger_cost),
-                "Running cost": float(running_cost), 
-                "Terminal cost": float(final_cost), 
-                "Remaining angle": float(jnp.degrees(angle)),
-                "Step": step}
+    log_data = {"Optimal cost": optimal_cost, 
+            "Control cost": ctrl_cost,
+            "Ball orientation cost": quat_cost,
+            "Finger sensor cost": finger_cost,
+            "Running cost": running_cost, 
+            "Terminal cost": final_cost, 
+            "Remaining angle": jnp.degrees(angle),
+            "Step": step}
     return log_data
 
 
@@ -57,8 +58,8 @@ def generate_qpos_init(config_hand, mx):
             -0.03,   -0.36,   -0.35,    0.82,    0.89,    0.61,   
             -0.021,   1.1,    0.41,    0.88,   -0.074,   0.67,    
             1.4,   -0.0024,   0.43,   -0.34,    0.54,    1.1,     
-            0.39,   0,   1.2,    0.089,    0.7,     0.6,    
-            0.0,    0.0,    0.0,
+            0.39,   0,   1.2,    0.089,    0.2,     0.6,    
+            0.0,    0.0,    0.35,
             1.0,   0.0,    0.0,    0.0,
             1.,     0.,      0.,      0.
         ])
@@ -104,13 +105,20 @@ def hand_free_costs(config: Dict[str, Any]) -> Tuple[
         quat_cost = float(quat_weight) * (angle ** 2)
         # # jax.debug.print("quat_cost: {x}", x=quat_cost)
 
+        # quat_cost = float(quat_weight) * ((angle + 1) ** 2)
+        # jax.debug.print("angle: {x}", x=angle)
+        # quat_cost = jax.lax.cond(
+        #     jnp.less(jnp.degrees(angle), 1.0),
+        #     lambda: quat_cost / 2,
+        #     lambda: quat_cost
+        # )
+
         finger_cost = 0.0
         if use_sensors:
             thumb_sensor_data = dx.sensordata[0]
             thumb_contact_cost = (1/(thumb_sensor_data + (1/100)))
-            # jax.debug.print("thumb_cost: {x}", x = thumb_contact_cost)
 
-            finger_data, palm_data = dx.sensordata[1:5], dx.sensordata[5]
+            finger_data, palm_data = dx.sensordata[1:4], dx.sensordata[5]
             finger_cost = (jnp.sum(1/(finger_data + (1/25))) + thumb_contact_cost) * float(finger_weight)
 
         return ctrl_cost, quat_cost, finger_cost

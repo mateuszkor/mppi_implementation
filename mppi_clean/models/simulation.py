@@ -152,7 +152,6 @@ def simulate_trajectory_mppi_hand_gamma(mx, dx, set_control_fn, running_cost_fn,
         dx, t = carry
         dx = set_control_fn(dx, u)
         dx = mjx.step(mx, dx)
-        # ctrl_c, quat_c, finger_c = running_cost_fn(dx) * (gamma ** t)
         ctrl_c, quat_c, finger_c = jax.tree_map(lambda x: x * (gamma ** t), running_cost_fn(dx))
         state = jnp.concatenate([dx.qpos, dx.qvel])
         return (dx, t+1), (state, ctrl_c, quat_c, finger_c)

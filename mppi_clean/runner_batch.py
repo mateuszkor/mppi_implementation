@@ -169,24 +169,24 @@ def run_simulation(config, headless=False, use_wandb=False, batch_size=10, displ
                 print(f'first_index: {first_index} at iteration {first_completion_index}')
                 task_completed = True
 
-            if i == 2000: 
+            if i == 500: 
                 print("Task reached iteration limit")
                 task_completed = True
             i += 1
 
 if __name__ == "__main__":
     algorithm = "vanilla_mppi"
-    simulation = "hand_fixed"    #swingup, hand_fixed or hand_free
+    simulation = "swingup"    #swingup, hand_fixed or hand_free
 
     config, config_dict = load_config(f"config/{algorithm}/{simulation}.yaml")
     config.print_config()
 
-    headless = 1
-    use_wandb = 1
-    batch_size, display_index = 10, 0
+    headless = 0
+    use_wandb = 0
+    batch_size, display_index = 10, 9
     if use_wandb:
         name = generate_name(config_dict) + "_batch"
-        wandb.init(config=config, project="mppi_vanilla_batch_hand", name=name, mode="offline")
+        wandb.init(config=config, project="polo_hand_batch", name=name, mode="offline")
 
     run_simulation(config, headless, use_wandb, batch_size, display_index)
     try: 

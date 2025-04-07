@@ -35,13 +35,13 @@ def get_log_data(separate_costs, optimal_cost, step, qpos):
     
     angle = calculate_angular_distance(ball_quat, goal_quat)
     log_data = {"Optimal cost": optimal_cost, 
-                "Control cost": ctrl_cost,
-                "Ball orientation cost": quat_cost,
-                "Finger sensor cost": finger_cost,
-                "Running cost": running_cost, 
-                "Terminal cost": final_cost, 
-                "Remaining angle": jnp.degrees(angle),
-                "Step": step}
+            "Control cost": ctrl_cost,
+            "Ball orientation cost": quat_cost,
+            "Finger sensor cost": finger_cost,
+            "Running cost": running_cost, 
+            "Terminal cost": final_cost, 
+            "Remaining angle": jnp.degrees(angle),
+            "Step": step}
     return log_data
 
 def generate_qpos_init(key, config_hand, mx):

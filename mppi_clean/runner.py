@@ -4,7 +4,7 @@ import jax
 import jax.numpy as jnp
 import mujoco
 import mujoco.viewer
-
+import time
 from mujoco import mjx
 import mujoco.viewer
 import numpy as np
@@ -25,7 +25,7 @@ from dataclasses import asdict
 from utils.replay_buffer import ReplayBuffer
 import os
 
-def run_simulation(config, headless=False, use_wandb=False, algorithm="vanilla_mppi"):
+def run_simulation(config, headless=False, use_wandb=False, algorithm="vanilla_mppi", random_key=0, save_name=""):
 
     # Create simulation components using factory
 
@@ -56,7 +56,7 @@ def run_simulation(config, headless=False, use_wandb=False, algorithm="vanilla_m
     mx = mjx.put_model(model)
 
     # Initialize random key
-    key = jax.random.PRNGKey(0)
+    key = jax.random.PRNGKey(random_key)
     key, subkey = jax.random.split(key)
 
     qpos_init, is_completed, get_log_data, set_control, running_cost, terminal_cost = SimulationConstructor.create_simulation(
@@ -96,7 +96,8 @@ def run_simulation(config, headless=False, use_wandb=False, algorithm="vanilla_m
         running_cost,
         terminal_cost,
         set_control,
-        key_nn
+        key_nn,
+        save_name
     )
 
     # Setup viewer
@@ -158,8 +159,18 @@ def run_simulation(config, headless=False, use_wandb=False, algorithm="vanilla_m
                     key, subkey = jax.random.split(key)
                     split_keys = jax.random.split(subkey, optimizer.mini_batch)
                     
-                    generate_trajectory_targets = jax.vmap(optimizer.mppi_target, in_axes=(0, 0, 0))
-                    targets = generate_trajectory_targets(states, update_U, split_keys)
+                    if config.simulation.sensors:
+                        targets = []
+                        for index_m in range(optimizer.mini_batch):
+                            # Call the optimizer.mppi_target function for each mini-batch element and append the result to the targets list
+                            target = optimizer.mppi_target(states[index_m], update_U[index_m], split_keys[index_m])
+                            targets.append(target)
+
+                        # Convert the list of targets to a JAX array if needed
+                        targets = jnp.array(targets)
+                    else:
+                        generate_trajectory_targets = jax.vmap(optimizer.mppi_target, in_axes=(0, 0, 0))
+                        targets = generate_trajectory_targets(states, update_U, split_keys)
                     
                     print(f"targets: {targets}")
                     value_loss = optimizer.update_value_function(states, targets)
@@ -174,34 +185,44 @@ def run_simulation(config, headless=False, use_wandb=False, algorithm="vanilla_m
                 data.qvel[:] = np.array(jax.device_get(dx.qvel))
                 mujoco.mj_forward(model, data)
                 v.sync()
-            
-            # if is_completed(dx.qpos, 1.0, True):
-            #     print("Task completed seccessfully")
-            #     print(f'Final qpos: {dx.qpos}')
-            #     task_completed = True
 
-            if i == 1000: 
+            if is_completed(dx.qpos, 3.0, True):
+                print("Task completed seccessfully")
+                print(f'Final qpos: {dx.qpos}')
+                task_completed = True
+
+
+            if i == 2000: 
                 print("Task reached iteration limit")
                 task_completed = True
                 if config.network.save_model:
-                    save_model(optimizer.value_net, optimizer.value_opt_state, f"saved_models/value_function_{config.simulation.name}.eqx")
+                    save_model(optimizer.value_net, optimizer.value_opt_state, save_name)
+
             i += 1
 
 if __name__ == "__main__":
-    algorithm = "vanilla_mppi"     #vanilla_mppi, polo or polo_td
-    simulation = "hand_fixed"    #swingup, hand_fixed or hand_free
+    algorithm = "polo"     #vanilla_mppi, polo or polo_td
+    simulation = "hand_free"    #swingup, hand_fixed or hand_free
 
     config, config_dict = load_config(f"config/{algorithm}/{simulation}.yaml")
     config.print_config()
 
     headless = 0
     use_wandb = 0
-    if use_wandb:
-        name = generate_name(config_dict)
-        print(f"Name: {name}")
-        wandb.init(config=config, project="POLO_hand_tests", name=name, mode="online")
+    key = 0
 
-    run_simulation(config, headless, use_wandb, algorithm=algorithm)
+    if simulation == "swingup":
+        save_name = f"saved_models/value_function_cartpole.eqx"
+    else:
+        save_name = f"saved_models/eval_polo_hand_free_+1_2.eqx"
+
+    if use_wandb:
+        name = generate_name(config_dict) + f'_key:{key}'
+        project = "eval_polo"
+        wandb.init(config=config, project=project, name=name, mode="offline")
+    
+    run_simulation(config, headless, use_wandb, algorithm=algorithm, random_key=key, save_name=save_name)
+    
     try: 
         pass        
 
@@ -215,4 +236,3 @@ if __name__ == "__main__":
         if use_wandb:
             print("Finishing wandb run")
             wandb.finish()
-
