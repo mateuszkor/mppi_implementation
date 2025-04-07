@@ -85,5 +85,5 @@ use_wandb = 1
 
 To enable Weights & Biases tracking:
 
-1. Set `use_wandb = 1` in `main.py`.
+1. Set `use_wandb = 1` in `runner.py`.
 2. Add your API key or configure W&B locally.
