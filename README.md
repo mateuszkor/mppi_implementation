@@ -47,11 +47,16 @@ To run a simulation:
 python runner.py
 ```
 
-You can modify the algorithm and task at the bottom of `main.py`:
+If running on MAC use following:
+```bash
+mjpython runner.py
+```
+
+You can modify the algorithm and task at the bottom of `runner.py`:
 
 ```python
-algorithm = "polo"     # Options: "mppi", "polo", "polo_td"
-simulation = "hand_free"  # Options: "swingup", "hand_fixed", "hand_free"
+algorithm = "vanilla_mppi"     # Options: "vanill_mppi", "polo", "polo_td"
+simulation = "swingup"  # Options: "swingup", "hand_fixed", "hand_free"
 ```
 
 Configurations are loaded from:
