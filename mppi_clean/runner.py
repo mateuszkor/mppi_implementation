@@ -201,8 +201,8 @@ def run_simulation(config, headless=False, use_wandb=False, algorithm="vanilla_m
             i += 1
 
 if __name__ == "__main__":
-    algorithm = "polo"     #vanilla_mppi, polo or polo_td
-    simulation = "hand_free"    #swingup, hand_fixed or hand_free
+    algorithm = "vanilla_mppi"     #vanilla_mppi, polo or polo_td
+    simulation = "swingup"    #swingup, hand_fixed or hand_free
 
     config, config_dict = load_config(f"config/{algorithm}/{simulation}.yaml")
     config.print_config()
